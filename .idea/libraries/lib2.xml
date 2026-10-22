@@ -1,0 +1,14 @@
+<component name="libraryTable">
+  <library name="lib2">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/lib/nfx-list-1.0.0.jar!/" />
+      <root url="jar://$PROJECT_DIR$/lib/ikonli-fontawesome5-pack-12.3.1.jar!/" />
+      <root url="jar://$PROJECT_DIR$/lib/ikonli-fontawesome-pack-12.3.1.jar!/" />
+      <root url="jar://$PROJECT_DIR$/lib/mysql-connector-j-26.7.0.jar!/" />
+      <root url="jar://$PROJECT_DIR$/lib/ikonli-core-12.3.1.jar!/" />
+      <root url="jar://$PROJECT_DIR$/lib/ikonli-javafx-12.3.1.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

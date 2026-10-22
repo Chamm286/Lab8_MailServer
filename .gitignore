@@ -1,0 +1,5 @@
+out/
+server_mail/
+*.log
+client-mail.properties
+client-mail-*.properties

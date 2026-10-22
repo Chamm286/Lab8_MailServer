@@ -1,0 +1,45 @@
+.root { -fx-font-family: "Segoe UI", "Arial"; -fx-font-size: 12px; }
+.text-field, .password-field, .text-area { -fx-background-color: #f8fafc; -fx-border-color: #dce4ec; -fx-border-radius: 8; -fx-background-radius: 8; -fx-padding: 10 12; -fx-text-fill: #18283c; -fx-prompt-text-fill: #9aa6b5; }
+.text-field:focused, .password-field:focused, .text-area:focused { -fx-border-color: #078b91; -fx-background-color: white; }
+.button { -fx-font-family: "Segoe UI"; }
+.button:hover { -fx-opacity: 0.88; -fx-effect: dropshadow(gaussian, #19324a22, 8, 0.15, 0, 2); }
+.chart { -fx-padding: 10 12 0 5; }
+.chart-plot-background { -fx-background-color: #fbfdff; }
+.chart-vertical-grid-lines, .chart-horizontal-grid-lines { -fx-stroke: #e7edf3; }
+.chart-series-line { -fx-stroke: #078b91; -fx-stroke-width: 2.5px; }
+.chart-line-symbol { -fx-background-color: #078b91, white; -fx-background-insets: 0, 2; -fx-background-radius: 7px; -fx-padding: 4px; }
+.axis { -fx-tick-label-fill: #7b899b; -fx-font-size: 10px; }
+.axis-label { -fx-text-fill: #718096; -fx-font-size: 10px; }
+.chart-title { -fx-text-fill: #1d2c40; -fx-font-size: 14px; -fx-font-weight: bold; }
+.scroll-pane, .scroll-pane > .viewport { -fx-background-color: #f3f7fb; }
+.app-root { -fx-background-color: #f3f6fa; }
+.sidebar { -fx-background-color: white; -fx-border-color: transparent #e5eaf0 transparent transparent; }
+.eyebrow { -fx-text-fill: #8995a5; -fx-font-size: 9px; -fx-font-weight: bold; -fx-letter-spacing: 1.1px; }
+.muted-small { -fx-text-fill: #8b97a8; -fx-font-size: 10px; }
+.compose-button, .send-button { -fx-background-color: #078b91; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 12 16; -fx-background-radius: 9; -fx-cursor: hand; }
+.nav-button, .nav-active { -fx-background-color: transparent; -fx-text-fill: #64748b; -fx-font-size: 12px; -fx-padding: 11 13; -fx-background-radius: 8; -fx-cursor: hand; }
+.nav-active { -fx-background-color: #e8f6f5; -fx-text-fill: #087f83; -fx-font-weight: bold; }
+.account-card, .connection-card { -fx-background-color: #f7f9fc; -fx-padding: 12; -fx-background-radius: 10; -fx-border-color: #e7edf3; -fx-border-radius: 10; }
+.account-card .text-field, .account-card .password-field { -fx-font-size: 10px; }
+.endpoint { -fx-text-fill: #475569; -fx-font-size: 10px; }
+.status-pill { -fx-background-color: #e8f6f5; -fx-text-fill: #087f83; -fx-padding: 8 13; -fx-background-radius: 16; -fx-font-size: 10px; -fx-font-weight: bold; }
+.topbar { -fx-background-color: white; -fx-border-color: transparent transparent #e7edf3 transparent; }
+.topbar > .label { -fx-text-fill: #172b4d; -fx-font-weight: bold; -fx-font-size: 14px; }
+.small-button, .icon-button { -fx-background-color: white; -fx-text-fill: #475569; -fx-border-color: #dfe6ed; -fx-border-radius: 8; -fx-background-radius: 8; -fx-padding: 9 12; -fx-cursor: hand; }
+.icon-button { -fx-padding: 9 10; }
+.conversation { -fx-background-color: #f3f6fa; }
+.conversation-header { -fx-background-color: white; -fx-border-color: transparent transparent #e7edf3 transparent; }
+.chat-avatar { -fx-background-color: #dff3f1; -fx-text-fill: #078b91; -fx-font-size: 18px; -fx-padding: 11 14; -fx-background-radius: 50; }
+.messages-scroll { -fx-background-color: transparent; -fx-background: transparent; -fx-border-color: transparent; }
+.messages-scroll > .viewport { -fx-background-color: transparent; }
+.system-message { -fx-background-color: #e6edf5; -fx-text-fill: #67768a; -fx-font-size: 10px; -fx-padding: 8 13; -fx-background-radius: 13; }
+.bubble-incoming, .bubble-outgoing { -fx-padding: 12 15; -fx-background-radius: 14; -fx-effect: dropshadow(gaussian, #16324b12, 8, 0.1, 0, 2); }
+.bubble-incoming { -fx-background-color: white; -fx-background-radius: 14 14 14 4; }
+.bubble-outgoing { -fx-background-color: #d8f5e8; -fx-background-radius: 14 14 4 14; }
+.bubble-heading { -fx-text-fill: #087f83; -fx-font-size: 10px; -fx-font-weight: bold; }
+.bubble-text { -fx-text-fill: #243449; -fx-font-size: 12px; }
+.bubble-time { -fx-text-fill: #8995a5; -fx-font-size: 9px; -fx-alignment: center-right; }
+.composer { -fx-background-color: white; -fx-border-color: #e5eaf0 transparent transparent transparent; }
+.recipient-field, .subject-field { -fx-background-color: #f8fafc; -fx-border-color: #e3e9ef; -fx-background-radius: 8; -fx-border-radius: 8; -fx-padding: 9 12; }
+.message-editor { -fx-background-color: #f8fafc; -fx-border-color: #e3e9ef; -fx-background-radius: 9; -fx-border-radius: 9; }
+.message-editor .content { -fx-background-color: #f8fafc; -fx-background-radius: 9; }
