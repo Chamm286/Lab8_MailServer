@@ -187,25 +187,55 @@ public final class MailConfig {
     }
 
     /**
-     * Lưu ảnh Google mới. Chỉ thay avatar đang dùng nếu avatar đó đang trống
-     * hoặc vẫn là ảnh Google lần trước — không ghi đè ảnh người dùng tự chọn.
+     * Lưu ảnh Google mới và dùng luôn làm ảnh đại diện.
+     *
+     * Ảnh Google là nguồn "thật" của tài khoản, nên khi đã kết nối OAuth nó luôn
+     * được ưu tiên hơn ảnh chọn tay. Nhờ vậy ảnh trong app luôn khớp với ảnh Gmail
+     * hiện tại, kể cả khi người dùng đổi ảnh trên điện thoại.
+     *
+     * @param localUri đường dẫn file đã tải về máy (rỗng nếu chỉ có URL)
      */
-    public void applyGooglePhoto(String email, String photoUrl) {
+    public void applyGooglePhoto(String email, String photoUrl, String localUri) {
         if (isBlank(email) || isBlank(photoUrl)) return;
-        String previousGoogle = getGooglePhotoUrl(email);
-        String currentAvatar = getAvatarUrl(email);
         setGooglePhotoUrl(email, photoUrl);
-        if (isBlank(currentAvatar) || currentAvatar.equals(previousGoogle)) {
-            setAvatarUrl(email, photoUrl);
-        }
+        setAvatarUrl(email, isBlank(localUri) ? photoUrl : localUri);
+    }
+
+    public void applyGooglePhoto(String email, String photoUrl) {
+        applyGooglePhoto(email, photoUrl, "");
     }
 
     /** Sau khi đăng nhập OAuth: luôn dùng ảnh Google vừa lấy. */
     public void connectGooglePhoto(String email, String photoUrl, String refreshToken) {
+        connectGooglePhoto(email, photoUrl, refreshToken, "");
+    }
+
+    public void connectGooglePhoto(String email, String photoUrl, String refreshToken, String localUri) {
         if (isBlank(email)) return;
         setOAuthRefreshToken(email, refreshToken);
         setGooglePhotoUrl(email, photoUrl);
-        setAvatarUrl(email, photoUrl);
+        setAvatarUrl(email, isBlank(localUri) ? photoUrl : localUri);
+    }
+
+    /** True khi ảnh đại diện hiện tại đến từ tài khoản Google đã kết nối. */
+    public boolean isUsingGooglePhoto(String email) {
+        if (!hasGoogleOAuth(email)) return false;
+        String google = getGooglePhotoUrl(email);
+        String avatar = getAvatarUrl(email);
+        return !isBlank(google) && !isBlank(avatar);
+    }
+
+    /**
+     * Tài khoản Google không còn ảnh profile (người dùng đã xóa ảnh).
+     * Bỏ ảnh Google đã lưu để app quay về Gravatar/chữ cái đầu.
+     */
+    public void clearGooglePhoto(String email) {
+        if (isBlank(email)) return;
+        setGooglePhotoUrl(email, "");
+        String avatar = getAvatarUrl(email);
+        if (!isBlank(avatar) && avatar.replace('\\', '/').contains("/avatars/google-")) {
+            setAvatarUrl(email, "");
+        }
     }
 
     /** Ngắt OAuth và bỏ ảnh Google; chỉ xóa avatar nếu avatar đó là ảnh Google. */

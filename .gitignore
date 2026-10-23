@@ -1,4 +1,5 @@
 out/
+avatars/
 server_mail/
 *.log
 client-mail.properties

@@ -159,22 +159,28 @@ thì bỏ qua. Server cũng chống trùng theo `emails.message_id`.
 - Khi mở một thư, client tải lại **HTML, ảnh và tệp đính kèm** theo `Message-ID`; nội dung này
   không lưu vào MySQL nên mở lại luôn có bản đầy đủ từ Gmail.
 
-## Ảnh đại diện tài khoản
+## Ảnh đại diện tài khoản (ảnh Gmail thật, tự đồng bộ)
 
-- Ảnh đại diện hiển thị ở **góc trên bên phải** và **thẻ tài khoản ở sidebar**.
-- **Ảnh Gmail thật (tự động):** mở **Cấu hình → Hồ sơ người gửi → Lấy ảnh Google thật**.
-  App dùng **OAuth 2.0 Desktop (loopback + PKCE)** với quyền `openid email profile`, lấy trường
-  `picture` từ Google rồi lưu riêng theo từng email. Mỗi lần mở app, refresh token được dùng để
-  cập nhật lại ảnh nếu ảnh Google thay đổi.
-- **Tạo OAuth Client ID một lần:**
+Ảnh đại diện hiển thị ở **góc trên bên phải** và **thẻ tài khoản ở sidebar**.
+Khi tài khoản Google đã kết nối, app dùng **đúng ảnh profile hiện tại của Gmail** —
+bạn đổi ảnh trên điện thoại thì app tự cập nhật, **không cần upload ảnh thủ công**.
+
+- **Kết nối một lần:** bấm vào **ảnh đại diện** (hoặc **Cấu hình → Hồ sơ người gửi →
+  Đồng bộ ảnh Gmail thật**) → dán OAuth Client ID → **ĐĂNG NHẬP GOOGLE** → chọn đúng tài khoản → **Allow**.
+- App dùng **OAuth 2.0 Desktop (loopback + PKCE)** với quyền `openid email profile`, lấy trường
+  `picture` từ Google. Ảnh được **tải về `avatars/`** để hiện ngay, kể cả khi mất mạng.
+- **Tự đồng bộ:** khi mở app, khi quay lại cửa sổ app, và **mỗi 15 phút**. Nút **Đồng bộ lại**
+  trong Hồ sơ để cập nhật ngay. Refresh token lưu riêng theo từng email.
+- **Ảnh Google luôn được ưu tiên** khi đã kết nối, nên ảnh trong app luôn khớp với Gmail.
+- **Tạo OAuth Client ID một lần (nếu chưa có):**
   1. Vào `console.cloud.google.com/apis/credentials`.
   2. Tạo project → **OAuth consent screen** → `External` → thêm email tài khoản vào **Test users**.
   3. **Create credentials → OAuth client ID → Desktop app**.
   4. Dán **Client ID** + **Client Secret** vào hộp thoại ảnh Google → **ĐĂNG NHẬP GOOGLE**.
   5. Nếu muốn refresh token không hết hạn sau 7 ngày, **Publish app** trên OAuth consent screen.
 - OAuth chỉ đọc tên/ảnh đại diện; **không đọc nội dung mail, không thay App Password**.
-  Refresh token và ảnh Google chỉ lưu trên máy client trong `client-mail.properties`.
-- Vẫn có thể **chọn ảnh từ máy** hoặc dán **URL ảnh** thủ công nếu không muốn dùng OAuth.
+  Refresh token và ảnh Google chỉ lưu trên máy client, không gửi lên server.
+- Chỉ khi **không muốn dùng OAuth** mới cần **chọn ảnh từ máy** hoặc dán **URL ảnh** thủ công.
 - Nếu chưa có ảnh Google, client thử **Gravatar** công khai; không có thì dùng chữ cái đầu trên nền gradient.
 - Lý do cần OAuth: Google **không trả ảnh đại diện qua IMAP/App Password**; endpoint công khai
   `google.com/s2/photos/profile/<email>` trả `404`. OAuth là cách chính thức duy nhất để lấy đúng ảnh.
@@ -229,7 +235,8 @@ Mỗi dòng `MAIL|...` còn có `messageId` để client mở lại đúng thư 
 | `Không kết nối được server` | Chạy `run-server.bat`; kiểm tra cùng WiFi; mở firewall UDP 2023/20230. |
 | `DB: OFFLINE` | Bật MySQL, kiểm tra `db.properties` (3306 hoặc 3307). |
 | Google không nhận | Kiểm tra thư trong Spam; xác nhận đã bật 2-Step Verification cho đúng tài khoản gửi. |
-| Ảnh đại diện vẫn là chữ cái | Google không cho lấy ảnh Gmail qua App Password. Vào **Cấu hình → Ảnh đại diện**, chọn ảnh từ máy hoặc dán URL ảnh Google. |
+| Ảnh đại diện vẫn là chữ cái | Google không cho lấy ảnh Gmail qua App Password. Bấm vào **ảnh đại diện** → **Đồng bộ ảnh Gmail thật** → đăng nhập Google một lần. Sau đó app tự đồng bộ ảnh thật, không cần upload. |
+| Ảnh Google không tự cập nhật | Kiểm tra **Hồ sơ** báo *Ảnh Google: đang bật*. Nếu refresh token hết hạn (app OAuth còn ở Testing), bấm ảnh đại diện để đăng nhập lại Google. |
 
 ## Cấu trúc
 
@@ -240,4 +247,5 @@ Mỗi dòng `MAIL|...` còn có `messageId` để client mở lại đúng thư 
 | `client-mail.properties` | App Password **theo từng email** + chế độ gửi (chỉ trên máy client) |
 | `db.properties` | Kết nối JDBC localhost |
 | `sql/schema.sql` | DB `accounts`, `emails` |
+| `avatars/` | Ảnh Gmail thật tải về máy (tự tạo, đã ignore git) |
 | `server_mail/` | Backup file (song song với DB) |

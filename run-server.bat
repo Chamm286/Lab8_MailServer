@@ -13,7 +13,7 @@ if not exist "%JDK_BIN%\javac.exe" (echo JDK 21 not found: "%JDK_BIN%" & pause &
 if not exist "%FX_PATH%\javafx.controls.jar" (echo JavaFX SDK is missing: "%FX_PATH%" & pause & exit /b 1)
 if not exist "%MYSQL%" (echo MySQL connector missing: "%MYSQL%" & pause & exit /b 1)
 echo Compiling MailFlow server and client...
-"%JDK_BIN%\javac.exe" --module-path "%FX_PATH%" --add-modules javafx.controls,javafx.web -encoding UTF-8 -cp "%CP%" -d out src\server\MailDatabase.java src\server\ServerCore.java src\server\ServerApp.java src\client\ClientCore.java src\client\MailConfig.java src\client\ClientApp.java src\client\GmailSmtpService.java src\client\GmailPop3Service.java src\client\GmailImapService.java
+"%JDK_BIN%\javac.exe" --module-path "%FX_PATH%" --add-modules javafx.controls,javafx.web -encoding UTF-8 -cp "%CP%" -d out src\server\MailDatabase.java src\server\ServerCore.java src\server\ServerApp.java src\client\ClientCore.java src\client\MailConfig.java src\client\GoogleOAuthService.java src\client\ClientApp.java src\client\GmailSmtpService.java src\client\GmailPop3Service.java src\client\GmailImapService.java
 if errorlevel 1 goto failed
 echo Starting MailFlow Server Dashboard...
 "%JDK_BIN%\java.exe" -Xms128m -Xmx768m --module-path "%FX_PATH%" --add-modules javafx.controls -cp "out;%CP%" server.ServerApp

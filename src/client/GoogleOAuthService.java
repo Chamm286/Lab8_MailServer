@@ -2,9 +2,12 @@ package client;
 
 import com.sun.net.httpserver.HttpServer;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -16,6 +19,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -85,8 +89,9 @@ public final class GoogleOAuthService {
 
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         int port = server.getAddress().getPort();
-        // Google Desktop app: dùng localhost (không dùng literal 127.0.0.1) cho redirect URI.
-        String redirectUri = "http://localhost:" + port + "/oauth2callback";
+        // Dùng đúng địa chỉ đang listen. Nếu dùng "localhost", Windows có thể phân giải
+        // thành IPv6 ::1 trong khi server chỉ mở IPv4 → trình duyệt không gọi được callback.
+        String redirectUri = "http://127.0.0.1:" + port + "/oauth2callback";
         CompletableFuture<Map<String, String>> callback = new CompletableFuture<>();
 
         server.createContext("/oauth2callback", exchange -> {
@@ -196,6 +201,87 @@ public final class GoogleOAuthService {
         return new UserInfo(json.getOrDefault("email", ""),
                 json.getOrDefault("name", ""),
                 json.getOrDefault("picture", ""));
+    }
+
+    /**
+     * Ảnh Google trả về thường có hậu tố =s96-c (96 px). Đổi sang kích thước lớn hơn
+     * để ảnh đại diện trên app nét, không bị vỡ khi phóng to.
+     */
+    public static String pictureUrlForSize(String pictureUrl, int size) {
+        if (pictureUrl == null || pictureUrl.isBlank()) return "";
+        String url = pictureUrl.trim();
+        if (url.matches(".*=s\\d+(-c)?$")) {
+            return url.replaceFirst("=s\\d+(-c)?$", "=s" + Math.max(48, size) + "-c");
+        }
+        return url;
+    }
+
+    /**
+     * Tải ảnh thật từ Google rồi lưu một bản trong thư mục avatars/ của app.
+     *
+     * Lý do: URL ảnh của Google có thể đổi/không còn tải được sau một thời gian.
+     * Lưu bản trên máy giúp ảnh hiện ngay khi mở app và vẫn hiện khi mất mạng.
+     * Mỗi lần đồng bộ sẽ ghi đè bản cũ của đúng email đó.
+     */
+    public static File cachePicture(String email, String pictureUrl) throws Exception {
+        String sized = pictureUrlForSize(pictureUrl, 256);
+        byte[] bytes = downloadImage(sized);
+        if (bytes.length < 16) throw new IOException("Google trả về ảnh rỗng.");
+
+        String safe = (email == null ? "account" : email.trim().toLowerCase(Locale.ROOT))
+                .replaceAll("[^a-z0-9._-]", "_");
+        File dir = new File(System.getProperty("user.dir"), "avatars");
+        if (!dir.isDirectory() && !dir.mkdirs()) {
+            throw new IOException("Không tạo được thư mục avatars.");
+        }
+
+        // Xóa bản cũ (có thể khác phần mở rộng) để không tích tụ file rác.
+        File[] oldFiles = dir.listFiles((d, name) -> name.startsWith("google-" + safe + "."));
+        if (oldFiles != null) {
+            for (File old : oldFiles) {
+                if (!old.delete()) old.deleteOnExit();
+            }
+        }
+
+        File target = new File(dir, "google-" + safe + extensionFor(bytes));
+        try (FileOutputStream out = new FileOutputStream(target)) {
+            out.write(bytes);
+        }
+        return target;
+    }
+
+    /** Tải ảnh về bộ nhớ, theo redirect và không yêu cầu cookie/token (ảnh profile công khai). */
+    private static byte[] downloadImage(String url) throws Exception {
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(HTTP_TIMEOUT)
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(HTTP_TIMEOUT)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MailFlow/1.0")
+                .header("Accept", "image/png,image/jpeg,image/gif;q=0.9,*/*;q=0.5")
+                .GET()
+                .build();
+        HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        if (response.statusCode() / 100 != 2) {
+            throw new IOException("Không tải được ảnh Google (HTTP " + response.statusCode() + ").");
+        }
+        return response.body();
+    }
+
+    private static String extensionFor(byte[] bytes) {
+        if (bytes.length >= 8
+                && (bytes[0] & 0xFF) == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G') {
+            return ".png";
+        }
+        if (bytes.length >= 3 && (bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xFF) == 0xD8) {
+            return ".jpg";
+        }
+        if (bytes.length >= 4 && bytes[0] == 'G' && bytes[1] == 'I' && bytes[2] == 'F') {
+            return ".gif";
+        }
+        return ".png";
     }
 
     private static Map<String, String> postForm(String url, String body) throws Exception {

@@ -121,6 +121,7 @@ public class ClientApp extends Application {
 
     private Label      headerAvatar, headerName, headerEmail;
     private Label      sidebarAvatar, sidebarName, sidebarEmail;
+    private Label      settingsAvatarPreview;
     private static final Map<String, Image> AVATAR_CACHE = new ConcurrentHashMap<>();
     private static final Set<String> AVATAR_FAILED = ConcurrentHashMap.newKeySet();
     private static final Map<Label, String> AVATAR_WATCHED = new WeakHashMap<>();
@@ -133,8 +134,10 @@ public class ClientApp extends Application {
     private HBox       authPage;
     private BorderPane mainPage;
     private StackPane  modalLayer;
-    private Timeline   autoRefreshTimer, gmailSyncTimer;
+    private Timeline   autoRefreshTimer, gmailSyncTimer, googleAvatarTimer;
     private VBox       toastContainer;
+    private long       lastGoogleAvatarSyncAt = 0L;
+    private boolean    googleAvatarPromptShown = false;
 
     private boolean isSending = false;
     private boolean refreshing = false;
@@ -277,7 +280,11 @@ public class ClientApp extends Application {
         stage.setMinHeight(760);
         stage.setScene(scene);
         stage.focusedProperty().addListener((obs, wasFocused, isFocused) -> {
-            if (isFocused && currentUser != null) syncGmailReplies(false);
+            if (isFocused && currentUser != null) {
+                syncGmailReplies(false);
+                // Ảnh Gmail có thể vừa được đổi trên điện thoại: kiểm tra lại khi quay về app.
+                refreshGoogleAvatarAsync(false);
+            }
         });
 
         // Phím tắt thao tác nhanh như một mail client chuyên nghiệp.
@@ -311,6 +318,13 @@ public class ClientApp extends Application {
         gmailSyncTimer = new Timeline(new KeyFrame(Duration.seconds(7), ev -> syncGmailReplies(false)));
         gmailSyncTimer.setCycleCount(Timeline.INDEFINITE);
         gmailSyncTimer.play();
+
+        // Ảnh Gmail thật: tự đồng bộ lại định kỳ, không cần upload/chọn ảnh.
+        googleAvatarTimer = new Timeline(new KeyFrame(Duration.minutes(15), ev -> {
+            if (currentUser != null) refreshGoogleAvatarAsync(false);
+        }));
+        googleAvatarTimer.setCycleCount(Timeline.INDEFINITE);
+        googleAvatarTimer.play();
     }
 
     private String detectMyIP() {
@@ -759,7 +773,14 @@ public class ClientApp extends Application {
         headerAvatar.setMaxSize(32, 32);
         headerAvatar.setAlignment(Pos.CENTER);
         headerAvatar.setStyle("-fx-background-color: linear-gradient(to bottom right, " + ACCENT + ", " + SKY
-                + "); -fx-text-fill:white; -fx-font-size:12px; -fx-font-weight:bold; -fx-background-radius:50;");
+                + "); -fx-text-fill:white; -fx-font-size:12px; -fx-font-weight:bold; -fx-background-radius:50;"
+                + " -fx-cursor:hand;");
+        headerAvatar.setTooltip(new Tooltip("Đồng bộ ảnh Gmail thật"));
+        headerAvatar.setOnMouseClicked(e -> {
+            e.consume();
+            if (currentEmail == null || currentEmail.isBlank()) openSettings();
+            else openGoogleAvatarDialog(this::updateProfileLabels);
+        });
 
         headerName = new Label("guest");
         headerName.setStyle("-fx-text-fill:" + INK + "; -fx-font-size:11.5px; -fx-font-weight:bold;");
@@ -2493,11 +2514,12 @@ public class ClientApp extends Application {
         TextField profileEmail = lightField(FontAwesomeSolid.AT, "Email thật");
         profileEmail.setText(currentEmail == null ? "" : currentEmail);
 
-        TextField avatarField = lightField(FontAwesomeSolid.IMAGE, "URL ảnh đại diện (tùy chọn)");
+        TextField avatarField = lightField(FontAwesomeSolid.IMAGE, "URL ảnh dự phòng (tùy chọn)");
         avatarField.setText(mailConfig.getAvatarUrl(currentEmail));
         Label avatarPreview = new Label();
         avatarPreview.setMinSize(54, 54);
         avatarPreview.setMaxSize(54, 54);
+        settingsAvatarPreview = avatarPreview;
         String previewName = currentName == null || currentName.isBlank() ? currentUser : currentName;
         String previewInitial = previewName == null || previewName.isBlank()
                 ? "?" : previewName.substring(0, 1).toUpperCase(Locale.ROOT);
@@ -2548,26 +2570,31 @@ public class ClientApp extends Application {
         HBox avatarRow = new HBox(11, avatarPreview, avatarEditor);
         avatarRow.setAlignment(Pos.CENTER_LEFT);
 
-        Label avatarNote = new Label("Ảnh đại diện Google thật cần OAuth (một lần). "
-                + "App Password/IMAP không cấp quyền lấy ảnh profile. Bạn vẫn có thể chọn ảnh từ máy hoặc dán URL.");
+        Label avatarNote = new Label("Ảnh dự phòng: chọn từ máy hoặc dán URL, chỉ dùng khi CHƯA kết nối Google. "
+                + "Khi đã kết nối, ảnh thật của Gmail luôn được ưu tiên và tự đồng bộ.");
         avatarNote.setWrapText(true);
         avatarNote.setStyle("-fx-text-fill:" + MUTED + "; -fx-font-size:9.5px;");
 
         boolean googleAvatarConnected = mailConfig.hasGoogleOAuth(currentEmail);
         Button googleAvatarButton = ghostButton(FontAwesomeSolid.USER_CIRCLE,
-                googleAvatarConnected ? "Đăng nhập lại Google" : "Lấy ảnh Google thật");
+                googleAvatarConnected ? "Đăng nhập lại Google" : "Đồng bộ ảnh Gmail thật");
         googleAvatarButton.setOnAction(e -> openGoogleAvatarDialog(() -> {
             updateProfileLabels();
             openSettings();
         }));
+        Button googleAvatarSync = ghostButton(FontAwesomeSolid.SYNC_ALT, "Đồng bộ lại");
+        googleAvatarSync.setOnAction(e -> refreshGoogleAvatarAsync(true));
+        googleAvatarSync.setVisible(googleAvatarConnected);
+        googleAvatarSync.setManaged(googleAvatarConnected);
+        HBox googleAvatarActions = new HBox(8, googleAvatarButton, googleAvatarSync);
         Label googleAvatarStatus = new Label(googleAvatarConnected
-                ? "Ảnh Google: đã kết nối · tự làm mới khi mở app"
-                : "Ảnh Google: chưa kết nối · cần OAuth Client ID");
+                ? "Ảnh Google: đang bật · tự đồng bộ khi mở app, khi quay lại app và mỗi 15 phút"
+                : "Ảnh Google: chưa kết nối · đăng nhập Google một lần để lấy ảnh thật");
         googleAvatarStatus.setWrapText(true);
-        googleAvatarStatus.setStyle("-fx-text-fill:" + (googleAvatarConnected ? GREEN : MUTED)
-                + "; -fx-font-size:9.5px; -fx-background-color:" + (googleAvatarConnected ? GREEN_BG : BG)
+        googleAvatarStatus.setStyle("-fx-text-fill:" + (googleAvatarConnected ? GREEN : AMBER)
+                + "; -fx-font-size:9.5px; -fx-background-color:" + (googleAvatarConnected ? GREEN_BG : AMBER_BG)
                 + "; -fx-padding:7 9; -fx-background-radius:8;");
-        VBox googleAvatarBox = new VBox(5, googleAvatarButton, googleAvatarStatus);
+        VBox googleAvatarBox = new VBox(5, googleAvatarActions, googleAvatarStatus);
 
         Label profileStatus = new Label("Tài khoản: @" + currentUser);
         profileStatus.setWrapText(true);
@@ -2653,7 +2680,8 @@ public class ClientApp extends Application {
                 pTitle, pSub,
                 labeledInput("Tên hiển thị", profileName),
                 labeledInput("Email thật", profileEmail),
-                avatarRow, avatarNote, googleAvatarBox,
+                googleAvatarBox,
+                avatarRow, avatarNote,
                 profileStatus, saveProfile);
         profileCard.setPadding(new Insets(16));
         profileCard.setStyle(cardStyle(14));
@@ -2848,8 +2876,8 @@ public class ClientApp extends Application {
 
         Label title = new Label("ẢNH ĐẠI DIỆN GOOGLE THẬT");
         title.setStyle("-fx-text-fill:" + INK + "; -fx-font-size:15px; -fx-font-weight:bold;");
-        Label sub = new Label("Đăng nhập Google một lần để MailFlow tự lấy đúng ảnh của "
-                + accountEmail + " và làm mới khi mở app.");
+        Label sub = new Label("Đăng nhập Google một lần để MailFlow tự lấy đúng ảnh thật của "
+                + accountEmail + ", tải về máy và đồng bộ lại tự động khi ảnh Gmail thay đổi.");
         sub.setWrapText(true);
         sub.setStyle("-fx-text-fill:" + MUTED + "; -fx-font-size:10.5px;");
 
@@ -2938,9 +2966,22 @@ public class ClientApp extends Application {
                         throw new IllegalStateException("Bạn đã đăng nhập " + result.email
                                 + ", không khớp tài khoản " + accountEmail + ". Hãy thử lại.");
                     }
+                    String localUri = "";
+                    try {
+                        File cached = GoogleOAuthService.cachePicture(accountEmail, result.pictureUrl);
+                        if (cached != null) localUri = cached.toURI().toString();
+                    } catch (Exception ignored) {
+                        // Không tải về được thì vẫn dùng URL ảnh trực tiếp của Google.
+                    }
+                    final String cachedAvatarUri = localUri;
                     Platform.runLater(() -> {
-                        mailConfig.connectGooglePhoto(accountEmail, result.pictureUrl, result.refreshToken);
+                        AVATAR_CACHE.clear();
+                        AVATAR_FAILED.clear();
+                        AVATAR_WATCHED.clear();
+                        mailConfig.connectGooglePhoto(accountEmail, result.pictureUrl,
+                                result.refreshToken, cachedAvatarUri);
                         mailConfig.save();
+                        lastGoogleAvatarSyncAt = System.currentTimeMillis();
                         updateProfileLabels();
                         setInlineStatus(status, "Đã lấy ảnh thật của " + result.email + ".",
                                 GREEN, GREEN_BG);
@@ -2962,7 +3003,8 @@ public class ClientApp extends Application {
         });
 
         Label note = new Label("Quyền chỉ gồm openid, email, profile — chỉ đọc tên và ảnh đại diện. "
-                + "Không đọc nội dung mail, không thay App Password. Refresh token chỉ lưu trên máy này.\n"
+                + "Không đọc nội dung mail, không thay App Password. Ảnh được tải về avatars/ và tự làm mới "
+                + "khi mở app, khi quay lại app và mỗi 15 phút.\n"
                 + "Nếu OAuth consent screen còn ở Testing, refresh token hết hạn sau 7 ngày; "
                 + "hãy Publish app để dùng lâu dài.");
         note.setWrapText(true);
@@ -2996,12 +3038,17 @@ public class ClientApp extends Application {
         int atA = a.indexOf('@');
         int atB = b.indexOf('@');
         if (atA <= 0 || atB <= 0) return false;
-        String domainA = a.substring(atA + 1);
-        String domainB = b.substring(atB + 1);
+        String domainA = googleMailDomain(a.substring(atA + 1));
+        String domainB = googleMailDomain(b.substring(atB + 1));
         if (!domainA.equals(domainB)) return false;
-        if (!(domainA.equals("gmail.com") || domainA.equals("googlemail.com"))) return false;
+        if (!domainA.equals("gmail.com")) return false;
         return a.substring(0, atA).replace(".", "")
                 .equals(b.substring(0, atB).replace(".", ""));
+    }
+
+    /** gmail.com và googlemail.com là cùng một hộp thư. */
+    private static String googleMailDomain(String domain) {
+        return "googlemail.com".equals(domain) ? "gmail.com" : domain;
     }
 
     private void setInlineStatus(Label label, String text, String color, String background) {
@@ -3862,7 +3909,10 @@ public class ClientApp extends Application {
                 }
                 loadSummaryAsync();
                 startGmailReplySync();
+                lastGoogleAvatarSyncAt = 0L;
+                googleAvatarPromptShown = false;
                 refreshGoogleAvatarAsync(false);
+                offerGoogleAvatarSync();
             });
         }, "login");
         worker.setDaemon(true);
@@ -4156,6 +4206,10 @@ public class ClientApp extends Application {
         if (sidebarEmail != null) sidebarEmail.setText(email);
         applyAvatar(headerAvatar, currentEmail, name, 32, initial);
         applyAvatar(sidebarAvatar, currentEmail, name, 40, initial);
+        // Cập nhật luôn ảnh xem trước nếu hộp Cấu hình đang mở (nút Đồng bộ lại).
+        if (settingsAvatarPreview != null) {
+            applyAvatar(settingsAvatarPreview, currentEmail, name, 54, initial);
+        }
 
         if (demoAccountValue != null) {
             demoAccountValue.setText((currentUser == null ? "—" : "@" + currentUser)
@@ -4247,7 +4301,10 @@ public class ClientApp extends Application {
         label.setStyle("-fx-background-color:transparent; -fx-padding:0;");
     }
 
-    /** Làm mới ảnh Google từ refresh token; không chặn UI. */
+    /**
+     * Đồng bộ ảnh Gmail thật: dùng refresh token để lấy ảnh hiện tại, tải ảnh về
+     * máy rồi cập nhật avatar ngay. Chạy ở thread nền, không chặn UI.
+     */
     private void refreshGoogleAvatarAsync(boolean loud) {
         final String email = currentEmail == null ? "" : currentEmail.trim();
         final String clientId = mailConfig.getOAuthClientId();
@@ -4255,36 +4312,109 @@ public class ClientApp extends Application {
         final String refreshToken = mailConfig.getOAuthRefreshToken(email);
         if (email.isBlank() || clientId.isBlank() || refreshToken.isBlank()) return;
 
+        // Tránh gọi trùng khi cửa sổ vừa lấy lại focus / timer vừa chạy.
+        long now = System.currentTimeMillis();
+        if (!loud && now - lastGoogleAvatarSyncAt < 45_000L) return;
+        lastGoogleAvatarSyncAt = now;
+
         Thread worker = new Thread(() -> {
             try {
                 GoogleOAuthService.UserInfo info = GoogleOAuthService.fetchUserInfoWithRefresh(
                         clientId, clientSecret, refreshToken);
-                if (!sameGoogleEmail(info.email, email) || info.pictureUrl.isBlank()) return;
+                if (!sameGoogleEmail(info.email, email)) return;
+
+                // Ảnh đã bị xóa trên tài khoản Google → bỏ ảnh cũ, quay về chữ cái đầu.
+                if (info.pictureUrl.isBlank()) {
+                    Platform.runLater(() -> {
+                        if (currentEmail == null || !sameGoogleEmail(currentEmail, email)) return;
+                        AVATAR_CACHE.clear();
+                        AVATAR_FAILED.clear();
+                        AVATAR_WATCHED.clear();
+                        mailConfig.clearGooglePhoto(email);
+                        mailConfig.save();
+                        updateProfileLabels();
+                        if (loud) showToast("Tài khoản Google hiện không có ảnh đại diện", AMBER);
+                    });
+                    return;
+                }
+
+                // Tải ảnh thật về avatars/ để hiện ngay và không phụ thuộc URL tạm của Google.
+                String localUri = "";
+                try {
+                    java.io.File cached = GoogleOAuthService.cachePicture(email, info.pictureUrl);
+                    if (cached != null) localUri = cached.toURI().toString();
+                } catch (Exception ignored) {
+                    // Vẫn dùng URL trực tiếp nếu không tải về được.
+                }
+                final String avatarUri = localUri;
+
                 Platform.runLater(() -> {
                     if (currentEmail == null || !sameGoogleEmail(currentEmail, email)) return;
-                    mailConfig.applyGooglePhoto(email, info.pictureUrl);
+                    AVATAR_CACHE.clear();
+                    AVATAR_FAILED.clear();
+                    AVATAR_WATCHED.clear();
+                    mailConfig.applyGooglePhoto(email, info.pictureUrl, avatarUri);
                     mailConfig.save();
                     updateProfileLabels();
-                    if (loud) showToast("Đã cập nhật ảnh đại diện Google", GREEN);
+                    if (loud) showToast(avatarUri.isBlank()
+                            ? "Đã đồng bộ ảnh Google" : "Đã đồng bộ ảnh Gmail thật", GREEN);
                 });
             } catch (Exception ex) {
-                if (loud) {
-                    Platform.runLater(() -> showToast("Chưa làm mới được ảnh Google: "
-                            + ex.getMessage(), AMBER));
-                }
+                final String message = ex.getMessage() == null ? "" : ex.getMessage();
+                final boolean expired = message.toLowerCase(Locale.ROOT).contains("invalid_grant")
+                        || message.toLowerCase(Locale.ROOT).contains("hết hiệu lực");
+                Platform.runLater(() -> {
+                    if (expired) {
+                        showToast("Phiên Google đã hết hạn. Bấm ảnh đại diện để đăng nhập lại.", AMBER);
+                        promptGoogleAvatarRelogin();
+                    } else if (loud) {
+                        showToast("Chưa làm mới được ảnh Google: " + message, AMBER);
+                    }
+                });
             }
         }, "google-avatar-refresh");
         worker.setDaemon(true);
         worker.start();
     }
 
+    /** Nhắc một lần ngay sau đăng nhập nếu tài khoản Google chưa có ảnh thật. */
+    private void offerGoogleAvatarSync() {
+        if (currentEmail == null || currentEmail.isBlank()) return;
+        if (!MailConfig.isGoogleMailbox(currentEmail)) return;
+        if (mailConfig.hasGoogleOAuth(currentEmail)) return;
+        if (googleAvatarPromptShown) return;
+        googleAvatarPromptShown = true;
+
+        showToast("Ảnh Gmail thật: bấm vào ảnh đại diện góc phải để đồng bộ một lần", ACCENT);
+
+        // Đã cấu hình OAuth Client ID từ trước nhưng tài khoản này chưa đăng nhập Google.
+        if (!mailConfig.getOAuthClientId().isBlank()) {
+            Platform.runLater(() -> openGoogleAvatarDialog(this::updateProfileLabels));
+        }
+    }
+
+    /** Refresh token hết hạn (app Google còn ở chế độ Testing) → mời đăng nhập lại. */
+    private void promptGoogleAvatarRelogin() {
+        if (googleAvatarPromptShown) return;
+        if (currentEmail == null || !MailConfig.isGoogleMailbox(currentEmail)) return;
+        if (mailConfig.getOAuthClientId().isBlank()) return;
+        googleAvatarPromptShown = true;
+        Platform.runLater(() -> openGoogleAvatarDialog(this::updateProfileLabels));
+    }
+
     private String avatarUrlFor(String email) {
         if (email == null || !email.trim().matches(MailConfig.EMAIL_PATTERN)) return "";
+
+        // Đã kết nối Google → ảnh thật của tài khoản luôn được ưu tiên.
+        if (mailConfig.hasGoogleOAuth(email)) {
+            String googleAvatar = mailConfig.getAvatarUrl(email);
+            if (googleAvatar != null && !googleAvatar.isBlank()) return googleAvatar.trim();
+            String googlePhoto = mailConfig.getGooglePhotoUrl(email);
+            if (googlePhoto != null && !googlePhoto.isBlank()) return googlePhoto.trim();
+        }
+
         String custom = mailConfig.getAvatarUrl(email);
         if (custom != null && !custom.isBlank()) return custom.trim();
-        // Ảnh lấy từ OAuth Google (nếu người dùng đã kết nối).
-        String googlePhoto = mailConfig.getGooglePhotoUrl(email);
-        if (googlePhoto != null && !googlePhoto.isBlank()) return googlePhoto.trim();
         // Nếu chưa có OAuth, thử Gravatar; không có thì dùng chữ cái đầu.
         String normalized = email.trim().toLowerCase(Locale.ROOT);
         String hash = md5Hex(normalized);
@@ -4813,6 +4943,7 @@ public class ClientApp extends Application {
 
     private void closeModal() {
         if (modalLayer == null) return;
+        settingsAvatarPreview = null;
         modalLayer.getChildren().clear();
         modalLayer.setVisible(false);
         modalLayer.setMouseTransparent(true);
