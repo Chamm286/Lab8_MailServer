@@ -233,8 +233,9 @@ public final class MailConfig {
         if (isBlank(email)) return;
         setGooglePhotoUrl(email, "");
         String avatar = getAvatarUrl(email);
-        if (!isBlank(avatar) && avatar.replace('\\', '/').contains("/avatars/google-")) {
+        if (isCachedGoogleAvatar(avatar)) {
             setAvatarUrl(email, "");
+            deleteCachedAvatar(avatar);
         }
     }
 
@@ -242,11 +243,28 @@ public final class MailConfig {
     public void clearGoogleOAuth(String email) {
         if (isBlank(email)) return;
         String googlePhoto = getGooglePhotoUrl(email);
+        String avatar = getAvatarUrl(email);
         setOAuthRefreshToken(email, "");
         setGooglePhotoUrl(email, "");
-        if (!isBlank(googlePhoto) && googlePhoto.equals(getAvatarUrl(email))) {
+        // Avatar có thể là URL ảnh Google hoặc file đã tải về avatars/ — cả hai đều phải bỏ.
+        if (!isBlank(avatar) && (avatar.equals(googlePhoto) || isCachedGoogleAvatar(avatar))) {
             setAvatarUrl(email, "");
+            deleteCachedAvatar(avatar);
         }
+    }
+
+    /** Ảnh do app tải từ Google về máy: .../avatars/google-<email>.<ext> */
+    private static boolean isCachedGoogleAvatar(String uri) {
+        return !isBlank(uri) && uri.replace('\\', '/').contains("/avatars/google-");
+    }
+
+    /** Chỉ xóa file cache Google; không đụng ảnh người dùng tự chọn. */
+    private static void deleteCachedAvatar(String uri) {
+        if (!isCachedGoogleAvatar(uri)) return;
+        try {
+            File file = new File(java.net.URI.create(uri));
+            if (file.isFile()) file.delete();
+        } catch (Exception ignored) { }
     }
 
     public String getSendMode() { return sendMode; }

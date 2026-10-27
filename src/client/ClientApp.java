@@ -3,7 +3,10 @@ package client;
 import javafx.animation.FadeTransition;
 import javafx.animation.KeyFrame;
 import javafx.animation.PauseTransition;
+import javafx.animation.RotateTransition;
+import javafx.animation.ScaleTransition;
 import javafx.animation.Timeline;
+import javafx.animation.Interpolator;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -153,6 +156,7 @@ public class ClientApp extends Application {
     private long    mailSessionStart = System.currentTimeMillis();
     private String  lastSyncText = "chưa đồng bộ";
     private final Set<String> sentMessageIds = ConcurrentHashMap.newKeySet();
+    private final Set<String> readMailIds = ConcurrentHashMap.newKeySet();
     private final MailConfig mailConfig = new MailConfig();
     private final StringBuilder proofBuffer = new StringBuilder();
 
@@ -1026,14 +1030,19 @@ public class ClientApp extends Application {
         private final StackPane avatar;
         private final Label avatarText;
         private final Label title, email, subject, preview, time, badge;
+        private final Circle unreadDot;
         private boolean hovered;
 
         MailCell() {
             avatarText = new Label("?");
+            avatarText.setMinSize(42, 42);
+            avatarText.setMaxSize(42, 42);
+            avatarText.setAlignment(Pos.CENTER);
             avatarText.setStyle("-fx-text-fill:white; -fx-font-size:13px; -fx-font-weight:bold;");
             avatar = new StackPane(avatarText);
             avatar.setMinSize(42, 42);
             avatar.setMaxSize(42, 42);
+            avatar.setStyle("-fx-background-color:transparent;");
 
             title = new Label();
             title.setStyle("-fx-text-fill:" + INK + "; -fx-font-size:12.5px; -fx-font-weight:bold;");
@@ -1061,7 +1070,9 @@ public class ClientApp extends Application {
             badge.setStyle("-fx-text-fill:" + ACCENT + "; -fx-font-size:8.5px; -fx-font-weight:bold; "
                     + "-fx-background-color:" + SOFT + "; -fx-padding:2 7; -fx-background-radius:6;");
 
-            HBox nameRow = new HBox(7, title, email);
+            unreadDot = new Circle(3.5, Color.web(ACCENT));
+            unreadDot.setVisible(false);
+            HBox nameRow = new HBox(7, unreadDot, title, email);
             nameRow.setAlignment(Pos.CENTER_LEFT);
             nameRow.setMinWidth(0);
             VBox body = new VBox(2, nameRow, subject, preview);
@@ -1078,9 +1089,24 @@ public class ClientApp extends Application {
             root.setMaxWidth(Double.MAX_VALUE);
             root.setPadding(new Insets(11, 13, 11, 14));
 
-            selectedProperty().addListener((o, a, b) -> paint());
+            selectedProperty().addListener((o, a, b) -> {
+                if (b && getItem() != null) {
+                    readMailIds.add(mailKey(getItem()));
+                    unreadDot.setVisible(false);
+                    title.setStyle("-fx-text-fill:" + INK + "; -fx-font-size:12.5px; -fx-font-weight:normal;");
+                    subject.setStyle("-fx-text-fill:" + SLATE + "; -fx-font-size:11.5px; -fx-font-weight:normal;");
+                }
+                paint();
+            });
             root.setOnMouseEntered(e -> { hovered = true; paint(); });
             root.setOnMouseExited(e -> { hovered = false; paint(); });
+        }
+
+        private String mailKey(MailItem item) {
+            if (item == null) return "";
+            return (item.folder == null ? "" : item.folder) + "|"
+                    + (item.fileName == null ? "" : item.fileName) + "|"
+                    + (item.messageId == null ? "" : item.messageId);
         }
 
         private void paint() {
@@ -1096,15 +1122,22 @@ public class ClientApp extends Application {
         @Override protected void updateItem(MailItem item, boolean empty) {
             super.updateItem(item, empty);
             if (empty || item == null) {
+                unreadDot.setVisible(false);
                 setGraphic(null); setText(null);
                 setStyle("-fx-background-color:" + SURFACE + ";");
                 return;
             }
             String titleText = item.title();
-            avatarText.setText(titleText.isEmpty() ? "?" : titleText.substring(0, 1).toUpperCase());
-            avatar.setStyle("-fx-background-color: linear-gradient(to bottom right, " + colorFor(titleText)
-                    + ", " + SKY + "); -fx-background-radius:50;");
+            String avatarEmail = item.isSent() ? firstAddress(item.to) : item.from;
+            applyAvatar(avatarText, avatarEmail, titleText, 42,
+                    titleText.isEmpty() ? "?" : titleText.substring(0, 1).toUpperCase());
             title.setText(titleText);
+            boolean unread = "INBOX".equalsIgnoreCase(item.folder) && !readMailIds.contains(mailKey(item));
+            unreadDot.setVisible(unread);
+            title.setStyle("-fx-text-fill:" + INK + "; -fx-font-size:12.5px; -fx-font-weight:"
+                    + (unread ? "bold" : "normal") + ";");
+            subject.setStyle("-fx-text-fill:" + (unread ? INK : SLATE) + "; -fx-font-size:11.5px; -fx-font-weight:"
+                    + (unread ? "bold" : "normal") + ";");
             String emailText = shortEmail(item.from);
             email.setText(emailText);
             boolean showEmail = !item.isSent() && !emailText.isBlank()
@@ -1200,11 +1233,17 @@ public class ClientApp extends Application {
         readerHint.setManaged(false);
 
         VBox senderInfo = new VBox(2, readerFrom, readerFromEmail, readerTo);
-        HBox senderRow = new HBox(11, readerAvatar, senderInfo);
+        HBox senderRow = new HBox(12, readerAvatar, senderInfo);
         senderRow.setAlignment(Pos.CENTER_LEFT);
+        senderRow.setPadding(new Insets(10, 13, 10, 10));
+        senderRow.setStyle("-fx-background-color:" + BG + "; -fx-background-radius:12;"
+                + " -fx-border-color:" + LINE + "; -fx-border-radius:12;");
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
-        HBox metaRow = new HBox(10, senderRow, sp, readerTime);
+        VBox timeBox = new VBox(2, new Label("THỜI GIAN"), readerTime);
+        ((Label) timeBox.getChildren().get(0)).setStyle("-fx-text-fill:" + DIM + "; -fx-font-size:8px; -fx-font-weight:bold;");
+        timeBox.setAlignment(Pos.TOP_RIGHT);
+        HBox metaRow = new HBox(10, senderRow, sp, timeBox);
         metaRow.setAlignment(Pos.CENTER_LEFT);
 
         HBox chipRow = new HBox(8, readerDb, readerFromIp);
@@ -1226,14 +1265,18 @@ public class ClientApp extends Application {
 
         VBox headerCard = new VBox(12, readerSubject, metaRow, chipRow, readerHint, toolbar);
         headerCard.setPadding(new Insets(20, 22, 16, 22));
-        headerCard.setStyle(cardStyle(16));
+        headerCard.setStyle("-fx-background-color:" + SURFACE + "; -fx-background-radius:16;"
+                + " -fx-border-color:" + ACCENT + " transparent " + LINE + " transparent;"
+                + " -fx-border-width:3 0 1 0; -fx-border-radius:16;"
+                + " -fx-effect: dropshadow(gaussian, rgba(15,23,42,0.06), 18, 0.16, 0, 4);");
 
         readerBody = new TextArea();
         readerBody.setEditable(false);
         readerBody.setWrapText(true);
         readerBody.setStyle("-fx-control-inner-background:" + SURFACE + "; -fx-background-color:" + SURFACE
-                + "; -fx-text-fill:" + SLATE + "; -fx-font-size:13px; -fx-font-family:'Segoe UI';"
-                + " -fx-border-color:transparent; -fx-background-radius:14; -fx-border-radius:14; -fx-padding:18;");
+                + "; -fx-text-fill:" + SLATE + "; -fx-font-size:13.5px; -fx-font-family:'Segoe UI';"
+                + " -fx-border-color:transparent; -fx-background-radius:14; -fx-border-radius:14; -fx-padding:22;"
+                + " -fx-highlight-fill:" + SOFT + "; -fx-highlight-text-fill:" + INK + ";");
 
         readerWeb = new WebView();
         readerWeb.setContextMenuEnabled(false);
@@ -1279,12 +1322,17 @@ public class ClientApp extends Application {
         if (readerDetail == null) return;
         readerEmpty.setVisible(false);  readerEmpty.setManaged(false);
         readerDetail.setVisible(true);  readerDetail.setManaged(true);
+        readerDetail.setOpacity(0);
+        FadeTransition readerFade = new FadeTransition(Duration.millis(180), readerDetail);
+        readerFade.setFromValue(0);
+        readerFade.setToValue(1);
+        readerFade.play();
 
         readerSubject.setText(item.subtitle());
         String titleText = item.title();
-        readerAvatar.setText(titleText.isEmpty() ? "?" : titleText.substring(0, 1).toUpperCase());
-        readerAvatar.setStyle("-fx-background-color: linear-gradient(to bottom right, " + colorFor(titleText)
-                + ", " + SKY + "); -fx-text-fill:white; -fx-font-size:15px; -fx-font-weight:bold; -fx-background-radius:50;");
+        String readerAvatarEmail = item.isSent() ? firstAddress(item.to) : item.from;
+        applyAvatar(readerAvatar, readerAvatarEmail, titleText, 46,
+                titleText.isEmpty() ? "?" : titleText.substring(0, 1).toUpperCase());
         readerFrom.setText(titleText);
         readerFromEmail.setText(item.from == null ? "—" : item.from);
         readerTo.setText("đến " + (item.to == null || item.to.isBlank() ? "—" : item.to));
@@ -1653,7 +1701,7 @@ public class ClientApp extends Application {
         Label title = new Label("  Danh bạ & trực tuyến");
         title.setGraphic(ic);
         title.setStyle("-fx-text-fill:" + INK + "; -fx-font-size:16px; -fx-font-weight:bold;");
-        Label sub = new Label("Chọn một người để soạn thư. Chấm xanh nghĩa là client đang mở và đã đăng nhập.");
+        Label sub = new Label("Danh bạ tải từ database server. Giữ Ctrl để chọn nhiều người rồi bấm GỬI NHIỀU EMAIL, hoặc nhấp đúp để soạn nhanh.");
         sub.setStyle("-fx-text-fill:" + MUTED + "; -fx-font-size:11px;");
 
         Region sp = new Region();
@@ -1664,12 +1712,27 @@ public class ClientApp extends Application {
                 + "-fx-background-color:" + BG + "; -fx-padding:6 12; -fx-background-radius:16;");
         card.setUserData(contactsStatusLabel);
 
+        Button composeMany = primaryButton("GỬI NHIỀU EMAIL", FontAwesomeSolid.PAPER_PLANE);
+        composeMany.setOnAction(e -> {
+            List<Contact> picked = new ArrayList<>(contactList.getSelectionModel().getSelectedItems());
+            if (picked.isEmpty()) {
+                showToast("Hãy chọn một hoặc nhiều liên hệ trong danh sách", AMBER);
+                return;
+            }
+            List<String> addresses = new ArrayList<>();
+            for (Contact c : picked) {
+                String address = c.email != null && c.email.contains("@") ? c.email : c.username;
+                if (!address.isBlank() && !addresses.contains(address)) addresses.add(address);
+            }
+            openCompose(String.join(", ", addresses), "", "");
+        });
         Button refresh = iconButton(FontAwesomeSolid.SYNC_ALT, "Tải lại danh bạ", MUTED);
         refresh.setOnAction(e -> loadContacts());
-        HBox header = new HBox(8, new VBox(3, title, sub), sp, contactsStatusLabel, refresh);
+        HBox header = new HBox(8, new VBox(3, title, sub), sp, contactsStatusLabel, composeMany, refresh);
         header.setAlignment(Pos.CENTER_LEFT);
 
         contactList = new ListView<>();
+        contactList.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
         contactList.setStyle("-fx-background-color:transparent; -fx-border-color:transparent; "
                 + "-fx-control-inner-background:" + SURFACE + ";");
         contactList.setPrefHeight(520);
@@ -1698,8 +1761,8 @@ public class ClientApp extends Application {
             av.setMinSize(42, 42);
             av.setMaxSize(42, 42);
             av.setAlignment(Pos.CENTER);
-            av.setStyle("-fx-background-color: linear-gradient(to bottom right, " + colorFor(c.username) + ", " + SKY
-                    + "); -fx-text-fill:white; -fx-font-size:13px; -fx-font-weight:bold; -fx-background-radius:50;");
+            applyAvatar(av, c.email != null && c.email.contains("@") ? c.email : c.username,
+                    c.displayName, 42, c.displayName.substring(0, 1).toUpperCase());
 
             Label name = new Label(c.displayName);
             name.setStyle("-fx-text-fill:" + INK + "; -fx-font-size:13px; -fx-font-weight:bold;");
@@ -1728,7 +1791,11 @@ public class ClientApp extends Application {
             row.setStyle("-fx-background-color:" + SURFACE + "; -fx-background-radius:12; "
                     + "-fx-border-color:" + LINE + "; -fx-border-radius:12;");
 
-            row.setOnMouseClicked(e -> openCompose(c.email != null && c.email.contains("@") ? c.email : c.username, "", ""));
+            row.setOnMouseClicked(e -> {
+                if (e.getClickCount() == 2) {
+                    openCompose(c.email != null && c.email.contains("@") ? c.email : c.username, "", "");
+                }
+            });
             setStyle("-fx-background-color:transparent; -fx-padding:5 0;");
             setGraphic(row);
         }
@@ -1857,6 +1924,35 @@ public class ClientApp extends Application {
         toLbl.setStyle("-fx-text-fill:" + ACCENT + "; -fx-font-size:11.5px; -fx-font-weight:bold;");
         HBox toRow = fieldRow(FontAwesomeSolid.USER_CIRCLE, toLbl, toF, addressBook);
 
+        TextField ccF = styledTextField("cc@example.com");
+        TextField bccF = styledTextField("bcc@example.com");
+        ccF.setPrefHeight(42);
+        bccF.setPrefHeight(42);
+        Label ccLbl = new Label("Cc");
+        ccLbl.setStyle("-fx-text-fill:" + TEAL + "; -fx-font-size:11.5px; -fx-font-weight:bold;");
+        Label bccLbl = new Label("Bcc");
+        bccLbl.setStyle("-fx-text-fill:" + TEAL + "; -fx-font-size:11.5px; -fx-font-weight:bold;");
+        HBox ccRow = fieldRow(FontAwesomeSolid.USERS, ccLbl, ccF, null);
+        HBox bccRow = fieldRow(FontAwesomeSolid.USER_SECRET, bccLbl, bccF, null);
+        ccRow.setVisible(false); ccRow.setManaged(false);
+        bccRow.setVisible(false); bccRow.setManaged(false);
+        Button ccToggle = new Button("Cc / Bcc");
+        ccToggle.setFocusTraversable(false);
+        String ccNormal = "-fx-background-color:transparent; -fx-text-fill:" + MUTED
+                + "; -fx-font-size:10px; -fx-font-weight:bold; -fx-padding:4 8; -fx-cursor:hand;";
+        String ccActive = "-fx-background-color:" + SOFT + "; -fx-text-fill:" + ACCENT
+                + "; -fx-font-size:10px; -fx-font-weight:bold; -fx-padding:4 8; -fx-background-radius:7; -fx-cursor:hand;";
+        ccToggle.setStyle(ccNormal);
+        ccToggle.setOnAction(e -> {
+            boolean show = !ccRow.isVisible();
+            ccRow.setVisible(show); ccRow.setManaged(show);
+            bccRow.setVisible(show); bccRow.setManaged(show);
+            ccToggle.setStyle(show ? ccActive : ccNormal);
+            if (show) ccF.requestFocus();
+        });
+        HBox ccToggleRow = new HBox(ccToggle);
+        ccToggleRow.setAlignment(Pos.CENTER_RIGHT);
+
         TextField subF = styledTextField("Tiêu đề thư…");
         subF.setText(subject);
         subF.setPrefHeight(42);
@@ -1875,6 +1971,22 @@ public class ClientApp extends Application {
                 + " -fx-font-family:'Segoe UI'; -fx-background-radius:12; -fx-border-color:" + LINE
                 + "; -fx-border-radius:12; -fx-padding:14;");
         VBox.setVgrow(bodyA, Priority.ALWAYS);
+
+        Button boldBtn = formatToolbarButton("B", "In đậm", true, false);
+        Button italicBtn = formatToolbarButton("I", "In nghiêng", false, true);
+        Button underlineBtn = formatToolbarButton("U", "Gạch chân", false, false);
+        underlineBtn.setStyle(underlineBtn.getStyle() + " -fx-underline:true;");
+        boldBtn.setOnAction(e -> wrapComposeSelection(bodyA, "*", "*"));
+        italicBtn.setOnAction(e -> wrapComposeSelection(bodyA, "_", "_"));
+        underlineBtn.setOnAction(e -> wrapComposeSelection(bodyA, "__", "__"));
+        Region tbDivider = new Region();
+        tbDivider.setMinWidth(1); tbDivider.setMaxWidth(1); tbDivider.setMinHeight(16);
+        tbDivider.setStyle("-fx-background-color:" + LINE + ";");
+        Label formatHint = new Label("Định dạng văn bản");
+        formatHint.setStyle("-fx-text-fill:" + DIM + "; -fx-font-size:9.5px;");
+        HBox formatBar = new HBox(4, boldBtn, italicBtn, underlineBtn, tbDivider, formatHint);
+        formatBar.setAlignment(Pos.CENTER_LEFT);
+        formatBar.setPadding(new Insets(2, 0, 2, 2));
 
         // ── Thanh công cụ đính kèm: gửi file/ảnh thật qua Gmail SMTP ──
         List<File> composeFiles = new ArrayList<>();
@@ -2031,10 +2143,13 @@ public class ClientApp extends Application {
 
         sendBtn.setOnAction(e -> {
             String recipient = toF.getText().trim();
+            List<String> toAddresses = parseAddressList(recipient);
             String subjectText = subF.getText().trim().replace("|", "/");
             String message = bodyA.getText().trim().replace("|", "/");
             boolean useGmail = gmailMode[0];
             final List<File> sendFiles = new ArrayList<>(composeFiles);
+            List<String> ccAddresses = parseAddressList(ccF.getText());
+            List<String> bccAddresses = parseAddressList(bccF.getText());
             showFormNote(formNote, "");
 
             if (recipient.isEmpty() || message.isEmpty() || subjectText.isEmpty()) {
@@ -2060,10 +2175,27 @@ public class ClientApp extends Application {
             String pass = mailConfig.getGmailAppPassword();
 
             if (useGmail) {
-                if (!recipient.matches(MailConfig.EMAIL_PATTERN)) {
-                    showFormNote(formNote, "Email người nhận không hợp lệ. Ví dụ: " + defaultAddress + ".");
-                    toF.requestFocus();
-                    return;
+                for (String address : toAddresses) {
+                    if (!address.matches(MailConfig.EMAIL_PATTERN)) {
+                        showFormNote(formNote, "Email người nhận không hợp lệ: " + address
+                                + ". Ví dụ: " + defaultAddress + ".");
+                        toF.requestFocus();
+                        return;
+                    }
+                }
+                for (String address : ccAddresses) {
+                    if (!address.matches(MailConfig.EMAIL_PATTERN)) {
+                        showFormNote(formNote, "Email Cc không hợp lệ: " + address);
+                        ccF.requestFocus();
+                        return;
+                    }
+                }
+                for (String address : bccAddresses) {
+                    if (!address.matches(MailConfig.EMAIL_PATTERN)) {
+                        showFormNote(formNote, "Email Bcc không hợp lệ: " + address);
+                        bccF.requestFocus();
+                        return;
+                    }
                 }
                 if (!authAddress.matches(MailConfig.EMAIL_PATTERN)) {
                     showFormNote(formNote, "Email người gửi phải hợp lệ. Kiểm tra Cấu hình.");
@@ -2082,6 +2214,11 @@ public class ClientApp extends Application {
                 mailConfig.setDefaultTo(recipient);
                 mailConfig.setSendMode(MailConfig.MODE_GMAIL);
             } else {
+                if (toAddresses.size() > 1) {
+                    showFormNote(formNote, "Chế độ LAN chỉ gửi cho một người nhận. Hãy chuyển sang Gmail để gửi nhiều email.");
+                    toF.requestFocus();
+                    return;
+                }
                 boolean username = recipient.matches("[A-Za-z0-9._-]{1,32}");
                 boolean email = recipient.matches(MailConfig.EMAIL_PATTERN);
                 if (!username && !email) {
@@ -2094,6 +2231,9 @@ public class ClientApp extends Application {
             mailConfig.save();
             updateGmailStatus();
 
+            final List<String> sendToList = toAddresses;
+            final List<String> sendCc = ccAddresses;
+            final List<String> sendBcc = bccAddresses;
             final String sendAuth = authAddress;
             final String sendFrom = fromAddr;
             final String sendName = displayName;
@@ -2104,6 +2244,11 @@ public class ClientApp extends Application {
             isSending = true;
             sendBtn.setDisable(true);
             sendLbl.setText(gmailPath ? "  ĐANG GỬI GMAIL…" : "  ĐANG GỬI LAN…");
+            RotateTransition sendSpin = new RotateTransition(Duration.millis(900), sendIc);
+            sendSpin.setByAngle(360);
+            sendSpin.setCycleCount(RotateTransition.INDEFINITE);
+            sendSpin.setInterpolator(Interpolator.LINEAR);
+            sendSpin.play();
 
             new Thread(() -> {
                 boolean gmailOk = false;
@@ -2115,7 +2260,7 @@ public class ClientApp extends Application {
                 try {
                     if (gmailPath) {
                         sentMessageId = GmailSmtpService.send(sendAuth, sendFrom, sendName, sendPass,
-                                sendTo, subjectText, message, sendFiles);
+                                sendToList, sendCc, sendBcc, subjectText, message, sendFiles);
                         gmailOk = true;
                     }
                     try {
@@ -2123,9 +2268,10 @@ public class ClientApp extends Application {
                                 + subjectText + "|" + message + "|" + (gmailPath ? "GMAIL" : "LAN")
                                 + "|" + sentMessageId);
                         if (saved.startsWith("OK")) {
-                            archived = true;
-                            archiveNote = saved.substring(3);
                             dbId = extractDbId(saved);
+                            // Chỉ coi là đã lưu DB khi server thực sự trả về emails.id.
+                            archived = !dbId.isEmpty();
+                            archiveNote = saved.substring(3);
                         } else {
                             archiveNote = saved;
                         }
@@ -2144,6 +2290,7 @@ public class ClientApp extends Application {
                 final String failure = error;
 
                 Platform.runLater(() -> {
+                    sendSpin.stop();
                     if (failure != null) {
                         sendBtn.setDisable(false);
                         sendLbl.setText(previousSendText);
@@ -2208,8 +2355,8 @@ public class ClientApp extends Application {
         HBox.setHgrow(footer.getChildren().get(1), Priority.ALWAYS);
         footer.setAlignment(Pos.CENTER_LEFT);
 
-        VBox bodyBox = new VBox(11, modeRow, modeHint, persona, toRow, subRow, bodyA,
-                attachBar, composeAttachments, gmailBox, formNote, footer);
+        VBox bodyBox = new VBox(9, modeRow, modeHint, persona, toRow, ccToggleRow, ccRow, bccRow,
+                subRow, formatBar, bodyA, attachBar, composeAttachments, gmailBox, formNote, footer);
         bodyBox.setPadding(new Insets(16, 20, 18, 20));
 
         VBox fullCard = new VBox(0, header, bodyBox);
@@ -2434,6 +2581,20 @@ public class ClientApp extends Application {
         card.setMaxWidth(540);
         card.setStyle("-fx-background-color:" + SURFACE + "; -fx-background-radius:16;"
                 + " -fx-effect: dropshadow(gaussian, rgba(2,6,18,0.55), 40, 0.22, 0, 14);");
+
+        ic.setScaleX(0.2);
+        ic.setScaleY(0.2);
+        ScaleTransition pop = new ScaleTransition(Duration.millis(360), ic);
+        pop.setFromX(0.2); pop.setFromY(0.2);
+        pop.setToX(1.12); pop.setToY(1.12);
+        pop.setCycleCount(2);
+        pop.setAutoReverse(true);
+        pop.setInterpolator(Interpolator.EASE_OUT);
+        pop.play();
+
+        card.setOpacity(0);
+        FadeTransition fade = new FadeTransition(Duration.millis(220), card);
+        fade.setFromValue(0); fade.setToValue(1); fade.play();
 
         modalLayer.getChildren().setAll(card);
         modalLayer.setVisible(true);
@@ -2940,6 +3101,11 @@ public class ClientApp extends Application {
             if (id.isEmpty()) {
                 setInlineStatus(status, "Cần OAuth Client ID. Bấm TẠO OAUTH CLIENT ID để tạo trước.",
                         RED, RED_BG);
+                return;
+            }
+            if (secret.isEmpty()) {
+                setInlineStatus(status, "Desktop app bắt buộc có Client Secret: dán cả Client ID + Client Secret "
+                        + "(Credentials → OAuth client → Desktop app).", RED, RED_BG);
                 return;
             }
             mailConfig.setOAuthClientId(id);
@@ -4104,16 +4270,24 @@ public class ClientApp extends Application {
         }
 
         MailItem keep = selectedMail;
-        suppressReader = true;
-        mailList.getItems().setAll(visible);
-        if (keep != null && visible.contains(keep)) {
-            mailList.getSelectionModel().select(keep);
+        boolean unchanged = sameMailItems(visible, mailList.getItems());
+        if (!unchanged) {
+            suppressReader = true;
+            mailList.getItems().setAll(visible);
+            if (keep != null) {
+                for (MailItem item : visible) {
+                    if (sameMailItem(item, keep)) {
+                        mailList.getSelectionModel().select(item);
+                        break;
+                    }
+                }
+            }
+            suppressReader = false;
         }
-        suppressReader = false;
         if (listCountLabel != null) listCountLabel.setText(String.valueOf(visible.size()));
 
-        boolean keptSelection = keep != null && visible.contains(keep);
-        if (!keptSelection) {
+        boolean hasSelection = mailList.getSelectionModel().getSelectedItem() != null;
+        if (!hasSelection) {
             if (!visible.isEmpty()) {
                 // Tự mở thư mới nhất để người dùng thấy ngay thư vừa gửi/nhận.
                 mailList.getSelectionModel().selectFirst();
@@ -4121,6 +4295,26 @@ public class ClientApp extends Application {
                 showReaderEmpty();
             }
         }
+    }
+
+    /** So sánh danh sách thư để tránh setAll lại mỗi 3 giây (nguyên nhân gây giật). */
+    private boolean sameMailItems(List<MailItem> a, List<MailItem> b) {
+        if (a == null || b == null || a.size() != b.size()) return false;
+        for (int i = 0; i < a.size(); i++) {
+            if (!sameMailItem(a.get(i), b.get(i))) return false;
+        }
+        return true;
+    }
+
+    private boolean sameMailItem(MailItem a, MailItem b) {
+        if (a == null || b == null) return a == b;
+        return eq(a.folder, b.folder) && eq(a.fileName, b.fileName)
+                && eq(a.subject, b.subject) && eq(a.time, b.time)
+                && eq(a.messageId, b.messageId) && a.starred == b.starred;
+    }
+
+    private static boolean eq(String a, String b) {
+        return a == null ? b == null : a.equals(b);
     }
 
     private void parseMailbox(String response, String folder) {
@@ -4228,6 +4422,7 @@ public class ClientApp extends Application {
             setAvatarInitial(label, initial, size);
             return;
         }
+        if (url.equals(label.getUserData())) return; // đã hiển thị đúng ảnh này rồi
         Image image = AVATAR_CACHE.get(url);
         if (image != null) {
             if (image.isError()) {
@@ -4236,6 +4431,7 @@ public class ClientApp extends Application {
                 return;
             }
             if (image.getWidth() > 0) {
+                label.setUserData(url);
                 setAvatarImage(label, image, size);
             } else {
                 // Ảnh còn đang tải: hiện chữ cái đầu và chờ ảnh xong để cập nhật đúng label này.
@@ -4265,9 +4461,8 @@ public class ClientApp extends Application {
             if (newValue.doubleValue() >= 1.0 || image.isError()) {
                 if (image.isError()) AVATAR_FAILED.add(url);
                 Platform.runLater(() -> {
-                    if (email == null || email.equalsIgnoreCase(currentEmail)) {
-                        applyAvatar(label, email, name, size, initial);
-                    }
+                    if (!url.equals(AVATAR_WATCHED.get(label))) return;
+                    applyAvatar(label, email, name, size, initial);
                 });
             }
         });
@@ -4275,6 +4470,9 @@ public class ClientApp extends Application {
 
     private void setAvatarInitial(Label label, String initial, double size) {
         if (label == null) return;
+        String key = "init|" + initial + "|" + size;
+        if (key.equals(label.getUserData())) return;
+        label.setUserData(key);
         label.setGraphic(null);
         label.setContentDisplay(ContentDisplay.TEXT_ONLY);
         label.setText(initial);
@@ -4415,8 +4613,9 @@ public class ClientApp extends Application {
 
         String custom = mailConfig.getAvatarUrl(email);
         if (custom != null && !custom.isBlank()) return custom.trim();
-        // Nếu chưa có OAuth, thử Gravatar; không có thì dùng chữ cái đầu.
+        // Ảnh công khai theo địa chỉ email (Google/Gravatar/…), trả 404 nếu không có.
         String normalized = email.trim().toLowerCase(Locale.ROOT);
+        if (normalized.contains("@")) return "https://unavatar.io/" + normalized + "?fallback=false";
         String hash = md5Hex(normalized);
         return hash.isBlank() ? "" : "https://www.gravatar.com/avatar/" + hash + "?s=200&d=404";
     }
@@ -4572,6 +4771,53 @@ public class ClientApp extends Application {
         button.setOnMouseEntered(e -> button.setStyle(hover));
         button.setOnMouseExited(e -> button.setStyle(normal));
         return button;
+    }
+
+    private Button formatToolbarButton(String text, String tip, boolean bold, boolean italic) {
+        Button button = new Button(text);
+        button.setFocusTraversable(false);
+        button.setTooltip(new Tooltip(tip));
+        String style = "-fx-background-color:transparent; -fx-text-fill:" + SLATE
+                + "; -fx-font-size:12.5px; -fx-font-weight:" + (bold ? "bold" : "normal")
+                + (italic ? "; -fx-font-style:italic;" : ";")
+                + " -fx-padding:3 9; -fx-background-radius:6; -fx-cursor:hand;";
+        String hover = "-fx-background-color:" + SOFT + "; -fx-text-fill:" + ACCENT
+                + "; -fx-font-size:12.5px; -fx-font-weight:" + (bold ? "bold" : "normal")
+                + (italic ? "; -fx-font-style:italic;" : ";")
+                + " -fx-padding:3 9; -fx-background-radius:6; -fx-cursor:hand;";
+        button.setStyle(style);
+        button.setOnMouseEntered(e -> button.setStyle(hover));
+        button.setOnMouseExited(e -> button.setStyle(style));
+        return button;
+    }
+
+    private static String firstAddress(String raw) {
+        if (raw == null) return "";
+        String[] parts = raw.split("[,;\\s]+");
+        return parts.length == 0 ? "" : parts[0].trim();
+    }
+
+    private List<String> parseAddressList(String raw) {
+        List<String> result = new ArrayList<>();
+        if (raw == null) return result;
+        for (String part : raw.split("[,;\\s]+")) {
+            String address = part.trim();
+            if (!address.isEmpty() && !result.contains(address)) result.add(address);
+        }
+        return result;
+    }
+
+    private void wrapComposeSelection(TextArea area, String prefix, String suffix) {
+        IndexRange range = area.getSelection();
+        if (range.getLength() == 0) {
+            area.insertText(area.getCaretPosition(), prefix + suffix);
+            area.positionCaret(area.getCaretPosition() - suffix.length());
+        } else {
+            String selected = area.getText().substring(range.getStart(), range.getEnd());
+            area.replaceText(range.getStart(), range.getEnd(), prefix + selected + suffix);
+            area.selectRange(range.getStart() + prefix.length(), range.getEnd() + prefix.length());
+        }
+        area.requestFocus();
     }
 
     private HBox fieldRow(FontAwesomeSolid icon, Label label, TextField field, Node extra) {

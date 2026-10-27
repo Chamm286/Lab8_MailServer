@@ -11,6 +11,13 @@ public class ServerCore {
     public static final int DISCOVERY_PORT = 20230;
     public static final int    PORT       = 2023;
 
+    /**
+     * CÔNG TẮC DEMO CỦA THẦY — chỉ cần sửa đúng 1 dòng này, KHÔNG comment code.
+     * true  = lưu mỗi thư vào MySQL (chạy bình thường).
+     * false = KHÔNG lưu MySQL, nhưng vẫn ghi file mail cho người nhận.
+     */
+    private static final boolean SAVE_MAIL_TO_DATABASE = true;
+
     public interface Logger {
         void log(String msg);
     }
@@ -390,16 +397,24 @@ public class ServerCore {
             if (content.isBlank()) return "ERROR|Nội dung không được để trống";
 
             // Người nhận nội bộ: username (LAN) hoặc email thật đã đăng ký.
+            // Hỗ trợ gửi cho nhiều email, phân tách bằng dấu phẩy/chấm phẩy.
+            java.util.List<String> recipientEmails = new java.util.ArrayList<>();
+            for (String token : toEmail.split("[,;\\s]+")) {
+                if (!token.isBlank()) recipientEmails.add(token.trim());
+            }
             boolean emailRecipient = toEmail.contains("@");
-            if (emailRecipient && !isValidEmail(toEmail)) {
-                return "ERROR|Email người nhận không hợp lệ: " + toEmail;
+            if (emailRecipient) {
+                if (recipientEmails.isEmpty()) return "ERROR|Thiếu địa chỉ người nhận";
+                for (String address : recipientEmails) {
+                    if (!isValidEmail(address)) return "ERROR|Email người nhận không hợp lệ: " + address;
+                }
             }
             if (gmailDelivered && !emailRecipient) {
                 return "ERROR|Gửi thư thật cần địa chỉ email người nhận hợp lệ, không phải username: " + toEmail;
             }
             String recipientUser;
             if (emailRecipient) {
-                recipientUser = resolveAccountByEmail(toEmail);
+                recipientUser = resolveAccountByEmail(recipientEmails.get(0));
             } else {
                 boolean localAccount = toEmail.matches("[A-Za-z0-9._-]{1,32}")
                         && (new File(new File(SERVER_DIR, toEmail), "new_email.txt").isFile()
@@ -442,20 +457,28 @@ public class ServerCore {
             write(new File(sentDir, fname), body.toString());
 
             // DATABASE: mỗi lần gửi thư = đúng 1 bản ghi (bảng emails)
+            // ═══════════════════════════════════════════════════════════════
+            // [DEMO THẦY] Dòng lưu MySQL ở ngay dưới.
+            // - Demo "không lưu database": comment dòng dbId = database.insertEmail(...)
+            //   (giữ nguyên phần ghi file inbox/sent phía trên → người nhận vẫn có mail).
+            // - Sau demo: bỏ comment dòng đó rồi chạy lại server.
+            // ═══════════════════════════════════════════════════════════════
             long dbId = -1;
-            if (database.isReady()) {
+            if (database.isReady() && SAVE_MAIL_TO_DATABASE) {
                 // folder=SENT; inbox lấy theo recipient_user; sent lấy theo sender_user.
                 dbId = database.insertEmail(
                         sender, fromName, displayFrom, toEmail, subject, content, fromIp,
                         "SENT", recipientUser, gmailDelivered, messageId);
                 logger.log("[DB] Insert emails.id=" + dbId + " | " + sender + " -> " + toEmail
                         + (recipientUser == null ? "" : " | inbox=" + recipientUser));
+            } else if (database.isReady()) {
+                logger.log("[DB] Bỏ qua lưu MySQL vì SAVE_MAIL_TO_DATABASE = false (chế độ demo).");
             }
 
             logger.log("[SEND] " + sender + " -> " + toEmail + " | " + subject
                     + (gmailDelivered ? " | GMAIL" : " | LAN"));
-            return "OK|" + (gmailDelivered ? "Gmail SMTP + database" : "LAN")
-                    + (dbId > 0 ? " emails.id=" + dbId : "")
+            return "OK|" + (gmailDelivered ? "Gmail SMTP" : "LAN")
+                    + (dbId > 0 ? " + database emails.id=" + dbId : " (không lưu database)")
                     + (recipientUser != null ? " inbox=" + recipientUser : "");
         } catch (Exception e) {
             return "ERROR|" + e.getMessage();

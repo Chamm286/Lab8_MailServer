@@ -55,11 +55,30 @@ public final class GmailSmtpService {
     /** Gửi thư kèm file/ảnh. Ảnh được nhúng inline bằng Content-ID để hiện ngay trong nội dung. */
     public static String send(String authUser, String from, String fromName, String appPassword,
                               String to, String subject, String body, List<File> attachments) throws IOException {
+        return send(authUser, from, fromName, appPassword, to, List.of(), List.of(),
+                subject, body, attachments);
+    }
+
+    /** Gửi thư kèm Cc/Bcc và tệp đính kèm. Bcc chỉ dùng để gửi, không xuất hiện trong header. */
+    public static String send(String authUser, String from, String fromName, String appPassword,
+                              String to, List<String> cc, List<String> bcc,
+                              String subject, String body, List<File> attachments) throws IOException {
+        return send(authUser, from, fromName, appPassword, List.of(to), cc, bcc,
+                subject, body, attachments);
+    }
+
+    /** Gửi thư cho nhiều người nhận (To), kèm Cc/Bcc và tệp đính kèm. */
+    public static String send(String authUser, String from, String fromName, String appPassword,
+                              List<String> to, List<String> cc, List<String> bcc,
+                              String subject, String body, List<File> attachments) throws IOException {
         String auth = clean(authUser);
         String sender = clean(from);
-        String recipient = clean(to);
+        List<String> toList = cleanList(to);
+        if (toList.isEmpty()) throw new IOException("Chưa có người nhận.");
         String messageId = buildMessageId(sender);
         List<File> files = attachments == null ? List.of() : attachments;
+        List<String> ccList = cleanList(cc);
+        List<String> bccList = cleanList(bcc);
 
         long totalBytes = 0;
         for (File file : files) {
@@ -76,13 +95,12 @@ public final class GmailSmtpService {
             session.authenticate(auth, appPassword);
 
             session.command("MAIL FROM:<" + auth + ">", "250", "địa chỉ người gửi");
-            String recipientReply = session.command("RCPT TO:<" + recipient + ">", null, "địa chỉ người nhận");
-            if (!recipientReply.startsWith("250") && !recipientReply.startsWith("251")) {
-                throw new IOException("Google từ chối người nhận " + recipient + ": " + recipientReply);
-            }
+            for (String toAddress : toList) addRecipient(session, toAddress);
+            for (String ccAddress : ccList) addRecipient(session, ccAddress);
+            for (String bccAddress : bccList) addRecipient(session, bccAddress);
 
             session.command("DATA", "354", "bắt đầu nội dung thư");
-            session.out.write(buildMessage(sender, fromName, recipient,
+            session.out.write(buildMessage(sender, fromName, toList, ccList,
                     subject == null ? "" : subject, body == null ? "" : body, messageId, files));
             session.out.write("\r\n.\r\n");
             session.out.flush();
@@ -92,13 +110,30 @@ public final class GmailSmtpService {
         return messageId;
     }
 
+    private static void addRecipient(Session session, String address) throws IOException {
+        String reply = session.command("RCPT TO:<" + address + ">", null, "địa chỉ người nhận");
+        if (!reply.startsWith("250") && !reply.startsWith("251")) {
+            throw new IOException("Google từ chối người nhận " + address + ": " + reply);
+        }
+    }
+
+    private static List<String> cleanList(List<String> values) throws IOException {
+        List<String> result = new ArrayList<>();
+        if (values == null) return result;
+        for (String value : values) {
+            String address = clean(value);
+            if (!address.isEmpty() && !result.contains(address)) result.add(address);
+        }
+        return result;
+    }
+
     private static String buildMessageId(String from) {
         int at = from.indexOf('@');
         String domain = at > 0 ? from.substring(at + 1) : "mailflow.local";
         return "<" + UUID.randomUUID().toString().replace("-", "") + "@" + domain + ">";
     }
 
-    private static String buildMessage(String from, String fromName, String to,
+    private static String buildMessage(String from, String fromName, List<String> to, List<String> cc,
                                        String subject, String body, String messageId,
                                        List<File> attachments) throws IOException {
         String date = DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC));
@@ -107,8 +142,12 @@ public final class GmailSmtpService {
                 : encodeWord(fromName) + " <" + from + ">";
         StringBuilder message = new StringBuilder();
         message.append("From: ").append(fromHeader).append("\r\n")
-                .append("To: ").append(to).append("\r\n")
-                .append("Reply-To: ").append(from).append("\r\n")
+                .append("To: ").append(String.join(", ", to)).append("\r\n")
+                .append("Reply-To: ").append(from).append("\r\n");
+        if (cc != null && !cc.isEmpty()) {
+            message.append("Cc: ").append(String.join(", ", cc)).append("\r\n");
+        }
+        message
                 .append("Subject: ").append(encodeSubject(subject)).append("\r\n")
                 .append("Date: ").append(date).append("\r\n")
                 .append("Message-ID: ").append(messageId).append("\r\n")

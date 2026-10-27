@@ -43,3 +43,17 @@
 .recipient-field, .subject-field { -fx-background-color: #f8fafc; -fx-border-color: #e3e9ef; -fx-background-radius: 8; -fx-border-radius: 8; -fx-padding: 9 12; }
 .message-editor { -fx-background-color: #f8fafc; -fx-border-color: #e3e9ef; -fx-background-radius: 9; -fx-border-radius: 9; }
 .message-editor .content { -fx-background-color: #f8fafc; -fx-background-radius: 9; }
+.compose-title { -fx-text-fill: #172b4d; -fx-font-size: 15px; -fx-font-weight: bold; }
+.cc-toggle { -fx-background-color: transparent; -fx-text-fill: #64748b; -fx-font-size: 10px; -fx-padding: 5 10; -fx-background-radius: 6; -fx-cursor: hand; }
+.cc-toggle:hover, .cc-toggle:selected { -fx-background-color: #eef4fa; -fx-text-fill: #087f83; }
+.compose-row { -fx-padding: 3 0 3 0; -fx-border-color: transparent transparent #edf1f6 transparent; }
+.compose-label { -fx-text-fill: #8b97a8; -fx-font-size: 11px; -fx-font-weight: bold; }
+.compose-row .text-field { -fx-background-color: transparent; -fx-border-color: transparent; -fx-padding: 7 6; }
+.compose-row .text-field:focused { -fx-background-color: #f8fafc; -fx-border-color: transparent transparent #078b91 transparent; -fx-background-radius: 4; }
+.format-toolbar { -fx-padding: 6 0 6 0; -fx-border-color: transparent transparent #edf1f6 transparent; }
+.toolbar-button { -fx-background-color: transparent; -fx-text-fill: #475569; -fx-font-size: 13px; -fx-min-width: 30; -fx-min-height: 28; -fx-padding: 3 7; -fx-background-radius: 6; -fx-cursor: hand; }
+.toolbar-button:hover { -fx-background-color: #eef4fa; -fx-text-fill: #087f83; }
+.toolbar-separator { -fx-background-color: #e3e9ef; -fx-min-width: 1; -fx-max-width: 1; -fx-min-height: 18; }
+.nav-button:hover { -fx-background-color: #f2f7fb; -fx-text-fill: #087f83; }
+.nav-active:hover { -fx-background-color: #dcf0ee; }
+.unread-dot { -fx-background-color: #078b91; -fx-background-radius: 50; -fx-min-width: 7; -fx-min-height: 7; -fx-max-width: 7; -fx-max-height: 7; }

@@ -166,7 +166,8 @@ Khi tài khoản Google đã kết nối, app dùng **đúng ảnh profile hiệ
 bạn đổi ảnh trên điện thoại thì app tự cập nhật, **không cần upload ảnh thủ công**.
 
 - **Kết nối một lần:** bấm vào **ảnh đại diện** (hoặc **Cấu hình → Hồ sơ người gửi →
-  Đồng bộ ảnh Gmail thật**) → dán OAuth Client ID → **ĐĂNG NHẬP GOOGLE** → chọn đúng tài khoản → **Allow**.
+  Đồng bộ ảnh Gmail thật**) → dán **OAuth Client ID + Client Secret** → **ĐĂNG NHẬP GOOGLE** →
+  chọn đúng tài khoản → **Allow**.
 - App dùng **OAuth 2.0 Desktop (loopback + PKCE)** với quyền `openid email profile`, lấy trường
   `picture` từ Google. Ảnh được **tải về `avatars/`** để hiện ngay, kể cả khi mất mạng.
 - **Tự đồng bộ:** khi mở app, khi quay lại cửa sổ app, và **mỗi 15 phút**. Nút **Đồng bộ lại**
@@ -182,6 +183,9 @@ bạn đổi ảnh trên điện thoại thì app tự cập nhật, **không c�
   Refresh token và ảnh Google chỉ lưu trên máy client, không gửi lên server.
 - Chỉ khi **không muốn dùng OAuth** mới cần **chọn ảnh từ máy** hoặc dán **URL ảnh** thủ công.
 - Nếu chưa có ảnh Google, client thử **Gravatar** công khai; không có thì dùng chữ cái đầu trên nền gradient.
+- **Lỗi thường gặp:** `client_secret is missing` → chưa dán Client Secret (Desktop app luôn có secret);
+  `redirect_uri_mismatch` → Client ID tạo sai loại, phải là **Desktop app**;
+  `access_denied` → email chưa có trong **Test users** hoặc bạn đã bấm Cancel.
 - Lý do cần OAuth: Google **không trả ảnh đại diện qua IMAP/App Password**; endpoint công khai
   `google.com/s2/photos/profile/<email>` trả `404`. OAuth là cách chính thức duy nhất để lấy đúng ảnh.
 
@@ -197,6 +201,9 @@ Hoặc mở phpMyAdmin → database `lab8_mail` → bảng `emails`.
 - Mỗi lần bấm Gửi = **1 dòng mới** (`folder = SENT`).
 - Mỗi thư trả lời đồng bộ từ điện thoại = **1 dòng mới** (`folder = INBOX`).
 - `from_name` là tên hiển thị người gửi; `message_id` dùng để chống trùng.
+- `sent_at` là **DATETIME giờ địa phương** của máy chạy MySQL. JDBC dùng
+  `connectionTimeZone=LOCAL&preserveInstants=false` để giữ nguyên giá trị này, nhờ đó cột
+  **Sent at** trên giao diện server khớp đúng giờ gửi (không bị lệch +7 giờ).
 - Nếu DB offline, server vẫn ghi file backup trong `server_mail/<user>/` và client báo màu vàng.
 
 ### Giao thức UDP mới

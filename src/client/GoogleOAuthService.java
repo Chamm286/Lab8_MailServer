@@ -79,6 +79,10 @@ public final class GoogleOAuthService {
         if (clientId == null || clientId.isBlank()) {
             throw new IOException("Thiếu OAuth Client ID.");
         }
+        if (clientSecret == null || clientSecret.isBlank()) {
+            throw new IOException("Thiếu OAuth Client Secret: Google bắt buộc gửi secret khi đổi code "
+                    + "(Desktop app luôn có Client Secret).");
+        }
         if (openBrowser == null) {
             throw new IOException("Không mở được trình duyệt.");
         }
@@ -125,15 +129,16 @@ public final class GoogleOAuthService {
             try {
                 params = callback.get(Math.max(30, timeoutSeconds), TimeUnit.SECONDS);
             } catch (TimeoutException timeout) {
-                throw new IOException("Hết thời gian chờ đăng nhập Google. Hãy thử lại.");
+                throw new IOException("Hết thời gian chờ đăng nhập Google. Kiểm tra: OAuth client phải là loại "
+                        + "Desktop app, rồi thử lại và bấm Allow trong trình duyệt.");
             }
 
             if (!state.equals(params.get("state"))) {
                 throw new IOException("Phản hồi Google không hợp lệ (state không khớp).");
             }
             if (params.containsKey("error")) {
-                String reason = params.getOrDefault("error_description", params.get("error"));
-                throw new IOException("Google từ chối kết nối: " + reason);
+                throw new IOException(friendlyAuthError(params.getOrDefault("error", ""),
+                        params.getOrDefault("error_description", "")));
             }
             String code = params.getOrDefault("code", "");
             if (code.isBlank()) throw new IOException("Google không trả mã đăng nhập.");
@@ -304,10 +309,43 @@ public final class GoogleOAuthService {
     private static String tokenError(Map<String, String> json, String fallback) {
         String error = json.getOrDefault("error", "").trim();
         String description = json.getOrDefault("error_description", "").trim();
+        String hint = tokenHint(error, description);
+        if (!hint.isEmpty()) return error.isBlank() ? hint : error + " — " + hint;
         if (!error.isEmpty() && !description.isEmpty()) return error + " — " + description;
         if (!description.isEmpty()) return description;
         if (!error.isEmpty()) return error;
         return fallback;
+    }
+
+    /** Dịch các mã lỗi thường gặp của Google thành việc cần làm, thay vì chỉ hiện mã lỗi. */
+    private static String tokenHint(String error, String description) {
+        String lower = description.toLowerCase(Locale.ROOT);
+        return switch (error) {
+            case "invalid_client" -> "Client ID hoặc Client Secret không đúng. Kiểm tra lại OAuth Client ID loại Desktop app.";
+            case "invalid_grant" -> lower.contains("expired") || lower.contains("revoked")
+                    ? "Refresh token Google đã hết hạn hoặc bị thu hồi. Hãy đăng nhập Google lại."
+                    : "Mã đăng nhập không còn hiệu lực. Hãy đăng nhập Google lại.";
+            case "invalid_request" -> lower.contains("client_secret")
+                    ? "Thiếu Client Secret: Desktop app bắt buộc phải dán cả Client Secret." : "";
+            case "redirect_uri_mismatch" -> "OAuth Client ID phải là loại Desktop app (không phải Web application).";
+            case "access_denied" -> "Bạn đã hủy đăng nhập Google hoặc ứng dụng chưa được cấp quyền.";
+            default -> "";
+        };
+    }
+
+    /** Lỗi Google trả về qua callback (trước khi đổi code) — cũng cần hướng dẫn cụ thể. */
+    private static String friendlyAuthError(String error, String description) {
+        return switch (error) {
+            case "access_denied" -> "Bạn đã hủy đăng nhập Google, hoặc email này chưa có trong Test users "
+                    + "của OAuth consent screen.";
+            case "redirect_uri_mismatch" -> "OAuth Client ID phải là loại Desktop app. Hãy tạo lại đúng loại rồi thử lại.";
+            case "invalid_client" -> "Client ID hoặc Client Secret không đúng.";
+            case "invalid_scope" -> "Ứng dụng Google chưa được cấp quyền openid/email/profile.";
+            case "org_internal" -> "OAuth app đang giới hạn nội bộ. Thêm email này vào Test users hoặc chọn External.";
+            case "admin_policy_enforced" -> "Quản trị viên Google Workspace đã chặn ứng dụng này.";
+            default -> description.isBlank() ? "Google từ chối kết nối (" + error + ")."
+                    : "Google từ chối kết nối: " + description;
+        };
     }
 
     private static String form(String... pairs) {

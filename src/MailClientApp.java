@@ -10,6 +10,13 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
+import javafx.stage.Popup;
+import javafx.animation.PauseTransition;
+import javafx.animation.FadeTransition;
+import javafx.animation.RotateTransition;
+import javafx.animation.ScaleTransition;
+import javafx.animation.Interpolator;
+import javafx.util.Duration;
 import org.kordamp.ikonli.javafx.FontIcon;
 import org.kordamp.ikonli.fontawesome5.FontAwesomeSolid;
 import java.io.*;
@@ -20,12 +27,15 @@ import java.nio.file.Paths;
 import java.util.Properties;
 
 public class MailClientApp extends Application {
-    private TextField fromField, toField, subjectField;
+    private TextField fromField, toField, subjectField, ccField, bccField;
+    private HBox ccRow, bccRow;
+    private Button formatBold, formatItalic, formatUnderline;
     private PasswordField passwordField;
     private TextArea bodyArea;
     private VBox messageList;
     private Label endpointLabel, connectionStatus, chatTitle;
     private Button sendButton, refreshButton;
+private Stage primaryStage;
     private volatile String serverHost = "127.0.0.1";
     private volatile int serverPort = 2525;
 
@@ -40,6 +50,7 @@ public class MailClientApp extends Application {
         Button inbox = navButton("Inbox", FontAwesomeSolid.INBOX, true); inbox.setOnAction(e -> checkInbox());
         Button sent = navButton("Sent", FontAwesomeSolid.PAPER_PLANE, false); sent.setOnAction(e -> appendSystem("Sent messages are shown in this conversation after sending."));
         Button drafts = navButton("Drafts", FontAwesomeSolid.FILE_ALT, false); drafts.setOnAction(e -> appendSystem("Drafts stay in the composer until you send them."));
+        Button trash = navButton("Trash", FontAwesomeSolid.TRASH_ALT, false); trash.setOnAction(e -> appendSystem("Deleted messages are kept in Gmail Trash."));
 
         Label accountTitle = new Label("MAIL ACCOUNT"); accountTitle.getStyleClass().add("eyebrow");
         fromField = new TextField(); fromField.setPromptText("you@gmail.com");
@@ -51,7 +62,7 @@ public class MailClientApp extends Application {
         Button discover = new Button("Auto detect", icon(FontAwesomeSolid.SYNC_ALT, "#52647a", 12)); discover.getStyleClass().add("small-button"); discover.setOnAction(e -> discoverServer());
         HBox discoveryRow = new HBox(7, icon(FontAwesomeSolid.WIFI, "#078b91", 12), endpointLabel); discoveryRow.setAlignment(Pos.TOP_LEFT);
         VBox connectionCard = new VBox(10, autoTitle, discoveryRow, discover); connectionCard.getStyleClass().add("connection-card");
-        VBox sidebar = new VBox(24, logo, compose, folders, inbox, sent, drafts, spacer(), accountCard, connectionCard); sidebar.setPadding(new Insets(24, 17, 20, 17)); sidebar.setPrefWidth(260); sidebar.setMinWidth(240); sidebar.getStyleClass().add("sidebar");
+        VBox sidebar = new VBox(24, logo, compose, folders, inbox, sent, drafts, trash, spacer(), accountCard, connectionCard); sidebar.setPadding(new Insets(24, 17, 20, 17)); sidebar.setPrefWidth(260); sidebar.setMinWidth(240); sidebar.getStyleClass().add("sidebar");
 
         connectionStatus = new Label("CONNECTING"); connectionStatus.getStyleClass().add("status-pill");
         Button check = new Button("Check inbox", icon(FontAwesomeSolid.SYNC_ALT, "#087f83", 12)); check.getStyleClass().add("small-button"); check.setOnAction(e -> checkInbox()); refreshButton = check;
@@ -67,18 +78,49 @@ public class MailClientApp extends Application {
         appendSystem("Welcome to MailFlow. Connect to the server, enter your Gmail App Password, and start a conversation.");
         ScrollPane messages = new ScrollPane(messageList); messages.setFitToWidth(true); messages.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER); messages.getStyleClass().add("messages-scroll"); VBox.setVgrow(messages, Priority.ALWAYS);
 
-        toField = new TextField(); toField.setPromptText("To: recipient@example.com"); toField.getStyleClass().add("recipient-field");
+        Label composeTitle = new Label("New message"); composeTitle.getStyleClass().add("compose-title");
+        ToggleButton ccToggle = new ToggleButton("Cc/Bcc"); ccToggle.getStyleClass().add("cc-toggle");
+        HBox composeHeader = new HBox(8, composeTitle, spacer(), ccToggle); composeHeader.setAlignment(Pos.CENTER_LEFT);
+
+        toField = new TextField(); toField.setPromptText("recipient@example.com"); toField.getStyleClass().add("recipient-field"); HBox.setHgrow(toField, Priority.ALWAYS);
+        ccField = new TextField(); ccField.setPromptText("cc@example.com"); ccField.getStyleClass().add("recipient-field"); HBox.setHgrow(ccField, Priority.ALWAYS);
+        bccField = new TextField(); bccField.setPromptText("bcc@example.com"); bccField.getStyleClass().add("recipient-field"); HBox.setHgrow(bccField, Priority.ALWAYS);
         subjectField = new TextField(); subjectField.setPromptText("Subject"); subjectField.getStyleClass().add("subject-field");
-        bodyArea = new TextArea(); bodyArea.setPromptText("Write a message…"); bodyArea.setWrapText(true); bodyArea.setPrefRowCount(3); bodyArea.getStyleClass().add("message-editor");
-        Button attach = new Button("", icon(FontAwesomeSolid.PAPERCLIP, "#718096", 15)); attach.getStyleClass().add("icon-button"); attach.setTooltip(new Tooltip("Attachments are not available in this SMTP implementation yet"));
+
+        HBox toRow = composeRow("To", toField);
+        ccRow = composeRow("Cc", ccField); ccRow.setVisible(false); ccRow.setManaged(false);
+        bccRow = composeRow("Bcc", bccField); bccRow.setVisible(false); bccRow.setManaged(false);
+        HBox subjectRow = composeRow("Subject", subjectField);
+        ccToggle.selectedProperty().addListener((o, was, now) -> { ccRow.setVisible(now); ccRow.setManaged(now); bccRow.setVisible(now); bccRow.setManaged(now); });
+
+        formatBold = formatButton("B", "Bold", FontWeight.BOLD);
+        formatItalic = formatButton("I", "Italic", FontWeight.NORMAL);
+        formatUnderline = formatButton("U", "Underline", FontWeight.NORMAL);
+        formatItalic.setStyle("-fx-font-style: italic;");
+        formatUnderline.setStyle("-fx-underline: true;");
+        formatBold.setOnAction(e -> wrapSelection("*", "*"));
+        formatItalic.setOnAction(e -> wrapSelection("_", "_"));
+        formatUnderline.setOnAction(e -> wrapSelection("__", "__"));
+        Button attach = new Button("", icon(FontAwesomeSolid.PAPERCLIP, "#718096", 14)); attach.getStyleClass().add("toolbar-button"); attach.setTooltip(new Tooltip("Attach a file"));
+        attach.setOnAction(e -> appendSystem("Attachments are not available in this SMTP implementation yet."));
+        Region tbSep = new Region(); tbSep.getStyleClass().add("toolbar-separator");
+        HBox toolbar = new HBox(4, formatBold, formatItalic, formatUnderline, tbSep, attach); toolbar.setAlignment(Pos.CENTER_LEFT); toolbar.getStyleClass().add("format-toolbar");
+
+        bodyArea = new TextArea(); bodyArea.setPromptText("Write your message…"); bodyArea.setWrapText(true); bodyArea.setPrefRowCount(6); bodyArea.getStyleClass().add("message-editor");
+        VBox.setVgrow(bodyArea, Priority.ALWAYS);
+
+        Button attachHint = new Button("", icon(FontAwesomeSolid.PAPERCLIP, "#718096", 15)); attachHint.setVisible(false); attachHint.setManaged(false);
         sendButton = new Button("Send", icon(FontAwesomeSolid.PAPER_PLANE, "#ffffff", 13)); sendButton.getStyleClass().add("send-button"); sendButton.setOnAction(e -> sendMail());
-        HBox composerActions = new HBox(10, attach, spacer(), new Label("Enter a subject and message to send"), sendButton); composerActions.setAlignment(Pos.CENTER_LEFT); composerActions.getChildren().get(2).getStyleClass().add("muted-small");
-        VBox composer = new VBox(8, toField, subjectField, bodyArea, composerActions); composer.setPadding(new Insets(14, 20, 18, 20)); composer.getStyleClass().add("composer");
+        Label composeHint = new Label("Enter a subject and message to send"); composeHint.getStyleClass().add("muted-small");
+        HBox composerActions = new HBox(10, composeHint, spacer(), sendButton); composerActions.setAlignment(Pos.CENTER_LEFT);
+
+        VBox composer = new VBox(2, composeHeader, toRow, ccRow, bccRow, subjectRow, toolbar, bodyArea, composerActions);
+        composer.setPadding(new Insets(14, 20, 18, 20)); composer.getStyleClass().add("composer");
         VBox conversation = new VBox(conversationHeader, messages, composer); conversation.getStyleClass().add("conversation"); VBox.setVgrow(conversation, Priority.ALWAYS);
         BorderPane main = new BorderPane(conversation, top, null, null, null); main.getStyleClass().add("main-pane");
         BorderPane root = new BorderPane(main, null, null, null, sidebar); root.getStyleClass().add("app-root");
         Scene scene = new Scene(root, 1280, 850); scene.getStylesheets().add(getClass().getResource("mailflow.css").toExternalForm());
-        stage.setTitle("MailFlow — Conversations"); stage.setMinWidth(960); stage.setMinHeight(700); stage.setScene(scene); stage.show();
+        stage.setTitle("MailFlow — Conversations"); stage.setMinWidth(960); stage.setMinHeight(700); stage.setScene(scene); this.primaryStage = stage; stage.show();
         discoverServer();
     }
 
@@ -88,7 +130,7 @@ public class MailClientApp extends Application {
         if (!to.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) { appendSystem("The recipient address does not look valid."); return; }
         setBusy(true); chatTitle.setText(to); appendBubble(body, "You  •  " + subject, true);
         Task<String> task = new Task<String>() { @Override protected String call() throws Exception { return exchange("SEND|" + enc(from) + "|" + enc(pass) + "|" + enc(to) + "|" + enc(subject) + "|" + enc(body), true); } };
-        task.setOnSucceeded(e -> { setBusy(false); if ("OK".equals(task.getValue())) appendSystem("Email delivered to Gmail SMTP successfully."); else appendSystem("Gmail rejected the message. Check the App Password, SMTP access, and server activity log."); });
+        task.setOnSucceeded(e -> { setBusy(false); if ("OK".equals(task.getValue())) { appendSuccessNotification("Email sent successfully", "Your message was delivered to Gmail SMTP and saved to Sent."); showToast(stage, true, "Gửi thành công"); } else { appendErrorNotification("Send failed", "Gmail rejected the message. Check the App Password, SMTP access, and server activity log."); showToast(stage, false, "Gửi thất bại"); } });
         task.setOnFailed(e -> { setBusy(false); appendSystem("Could not connect to " + serverHost + ":" + serverPort + " — " + task.getException().getMessage()); }); new Thread(task, "mailflow-send").start();
     }
 
@@ -140,6 +182,24 @@ public class MailClientApp extends Application {
     private static String enc(String text) { return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(text.getBytes(StandardCharsets.UTF_8)); }
     private void setBusy(boolean busy) { sendButton.setDisable(busy); refreshButton.setDisable(busy); connectionStatus.setText(busy ? "WORKING…" : "CONNECTED"); }
     private void appendSystem(String text) { Label l = new Label(text); l.getStyleClass().add("system-message"); l.setWrapText(true); l.setMaxWidth(560); HBox row = new HBox(l); row.setAlignment(Pos.CENTER); messageList.getChildren().add(row); }
+
+private void appendSuccessNotification(String title, String detail) {
+    Label icon = new Label("✓"); icon.setFont(Font.font("Segoe UI", FontWeight.BOLD, 22)); icon.setTextFill(Color.web("#2bb740"));
+    Label titleLabel = new Label(title); titleLabel.setFont(Font.font("Segoe UI", FontWeight.BOLD, 14)); titleLabel.setTextFill(Color.web("#172b4d"));
+    Label detailLabel = new Label(detail); detailLabel.getStyleClass().add("muted-small"); detailLabel.setWrapText(true); detailLabel.setMaxWidth(420); detailLabel.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+    VBox card = new VBox(6, icon, titleLabel, detailLabel); card.setAlignment(Pos.CENTER); card.setPadding(new Insets(16, 24, 16, 24)); card.setMaxWidth(460);
+    card.setStyle("-fx-background-color: rgba(50,215,75,0.10); -fx-background-radius: 14; -fx-border-color: rgba(50,215,75,0.35); -fx-border-radius: 14; -fx-border-width: 1;");
+    HBox row = new HBox(card); row.setAlignment(Pos.CENTER); row.setPadding(new Insets(6, 0, 6, 0)); messageList.getChildren().add(row);
+}
+
+private void appendErrorNotification(String title, String detail) {
+    Label icon = new Label("✕"); icon.setFont(Font.font("Segoe UI", FontWeight.BOLD, 22)); icon.setTextFill(Color.web("#ff3b30"));
+    Label titleLabel = new Label(title); titleLabel.setFont(Font.font("Segoe UI", FontWeight.BOLD, 14)); titleLabel.setTextFill(Color.web("#172b4d"));
+    Label detailLabel = new Label(detail); detailLabel.getStyleClass().add("muted-small"); detailLabel.setWrapText(true); detailLabel.setMaxWidth(420); detailLabel.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+    VBox card = new VBox(6, icon, titleLabel, detailLabel); card.setAlignment(Pos.CENTER); card.setPadding(new Insets(16, 24, 16, 24)); card.setMaxWidth(460);
+    card.setStyle("-fx-background-color: rgba(255,59,48,0.10); -fx-background-radius: 14; -fx-border-color: rgba(255,59,48,0.35); -fx-border-radius: 14; -fx-border-width: 1;");
+    HBox row = new HBox(card); row.setAlignment(Pos.CENTER); row.setPadding(new Insets(6, 0, 6, 0)); messageList.getChildren().add(row);
+}
     private void appendBubble(String text, String title, boolean outgoing) {
         Label heading = new Label(title); heading.getStyleClass().add("bubble-heading");
         Label body = new Label(text); body.getStyleClass().add("bubble-text"); body.setWrapText(true); body.setMaxWidth(570);
@@ -147,7 +207,52 @@ public class MailClientApp extends Application {
         VBox bubble = new VBox(6, heading, body, time); bubble.getStyleClass().add(outgoing ? "bubble-outgoing" : "bubble-incoming"); bubble.setMaxWidth(620);
         HBox row = new HBox(bubble); row.setAlignment(outgoing ? Pos.CENTER_RIGHT : Pos.CENTER_LEFT); row.setPadding(new Insets(0, 12, 0, 12)); messageList.getChildren().add(row);
     }
-    private String formatMail(String raw) {
+    private HBox composeRow(String name, TextField field) {
+    Label label = new Label(name); label.getStyleClass().add("compose-label"); label.setMinWidth(58); label.setPrefWidth(58);
+    HBox row = new HBox(6, label, field); row.setAlignment(Pos.CENTER_LEFT); row.getStyleClass().add("compose-row"); return row;
+}
+
+private Button formatButton(String text, String tooltip, FontWeight weight) {
+    Button b = new Button(text); b.getStyleClass().add("toolbar-button"); b.setTooltip(new Tooltip(tooltip));
+    b.setFont(Font.font("Segoe UI", weight, 13)); return b;
+}
+
+private void wrapSelection(String prefix, String suffix) {
+    IndexRange range = bodyArea.getSelection();
+    String text = bodyArea.getText();
+    if (range.getLength() == 0) { bodyArea.insertText(bodyArea.getCaretPosition(), prefix + suffix); bodyArea.positionCaret(bodyArea.getCaretPosition() - suffix.length()); return; }
+    String selected = text.substring(range.getStart(), range.getEnd());
+    bodyArea.replaceText(range.getStart(), range.getEnd(), prefix + selected + suffix);
+    bodyArea.selectRange(range.getStart() + prefix.length(), range.getEnd() + prefix.length());
+    bodyArea.requestFocus();
+}
+
+private void showToast(Stage owner, boolean success, String text) {
+    Popup popup = new Popup();
+    Label icon = new Label(success ? "⟳" : "✕"); icon.setFont(Font.font("Segoe UI", FontWeight.BOLD, 20)); icon.setTextFill(Color.web(success ? "#2bb740" : "#ff3b30"));
+    Label label = new Label(text); label.setFont(Font.font("Segoe UI", FontWeight.BOLD, 13)); label.setTextFill(Color.web("#172b4d"));
+    HBox box = new HBox(10, icon, label); box.setAlignment(Pos.CENTER_LEFT); box.setPadding(new Insets(12, 18, 12, 18));
+    box.setStyle("-fx-background-color: white; -fx-background-radius: 12; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.18), 16, 0, 0, 4);");
+    popup.getContent().add(box); popup.setAutoHide(true);
+    popup.show(owner);
+    popup.setX(owner.getX() + owner.getWidth() - 260); popup.setY(owner.getY() + 20);
+    if (success) {
+        RotateTransition spin = new RotateTransition(Duration.millis(600), icon);
+        spin.setByAngle(360); spin.setCycleCount(1); spin.setInterpolator(Interpolator.LINEAR); spin.play();
+        PauseTransition pt = new PauseTransition(Duration.millis(600));
+        pt.setOnFinished(e -> {
+            icon.setText("✔");
+            ScaleTransition pop = new ScaleTransition(Duration.millis(260), icon);
+            pop.setFromX(0.4); pop.setFromY(0.4); pop.setToX(1.15); pop.setToY(1.15); pop.setCycleCount(2);
+            pop.setAutoReverse(true); pop.play();
+        });
+        pt.play();
+    }
+    FadeTransition ft = new FadeTransition(Duration.millis(300), box); ft.setFromValue(0); ft.setToValue(1); ft.play();
+    PauseTransition hide = new PauseTransition(Duration.seconds(2.6)); hide.setOnFinished(e -> { FadeTransition f = new FadeTransition(Duration.millis(300), box); f.setFromValue(1); f.setToValue(0); f.setOnFinished(ev -> popup.hide()); f.play(); }); hide.play();
+}
+
+private String formatMail(String raw) {
         String from = header(raw, "From"), subject = header(raw, "Subject"); int end = raw.indexOf("\n\n"); String body = end >= 0 ? raw.substring(end + 2) : raw;
         body = body.replaceAll("(?s)Content-Type:.*?\\n\\n", "").replaceAll("(?m)^--[-A-Za-z0-9_=]+.*$", "").replaceAll("(?m)^\\.$", "").trim();
         if (body.length() > 6000) body = body.substring(0, 6000) + "…";

@@ -72,8 +72,13 @@ public final class MailDatabase {
 
     public MailDatabase(ServerCore.Logger logger) {
         Properties props = loadProperties();
+        // sent_at là DATETIME ghi theo giờ địa phương của MySQL (CURRENT_TIMESTAMP),
+        // nên không được để driver quy đổi múi giờ: nếu không giờ hiển thị sẽ lệch
+        // đúng bằng chênh lệch UTC (ví dụ +7 giờ). LOCAL + preserveInstants=false
+        // giữ nguyên đúng giá trị giờ đang lưu trong DB.
         this.url = props.getProperty("jdbc.url",
-                "jdbc:mysql://127.0.0.1:3307/lab8_mail?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8");
+                "jdbc:mysql://127.0.0.1:3307/lab8_mail?useSSL=false&allowPublicKeyRetrieval=true"
+                        + "&connectionTimeZone=LOCAL&preserveInstants=false&characterEncoding=UTF-8");
         this.user = props.getProperty("jdbc.user", "root");
         this.password = props.getProperty("jdbc.password", "");
         String driver = props.getProperty("jdbc.driver", "com.mysql.cj.jdbc.Driver");
