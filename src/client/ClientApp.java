@@ -991,6 +991,8 @@ public class ClientApp extends Application {
         HBox titleRow = new HBox(8, listTitleLabel, listCountLabel, sp, refreshBtn, composeBtn);
         titleRow.setAlignment(Pos.CENTER_LEFT);
         titleRow.setPadding(new Insets(16, 14, 12, 18));
+        titleRow.setStyle("-fx-background-color: linear-gradient(to bottom, #F8FBFF, " + SURFACE + ");"
+                + " -fx-border-color:transparent transparent " + LINE + " transparent; -fx-border-width:0 0 1 0;");
 
         Button syncBtn = ghostButton(FontAwesomeSolid.ROBOT, "Đồng bộ trả lời");
         syncBtn.setOnAction(e -> syncGmailReplies(true));
@@ -1236,8 +1238,9 @@ public class ClientApp extends Application {
         HBox senderRow = new HBox(12, readerAvatar, senderInfo);
         senderRow.setAlignment(Pos.CENTER_LEFT);
         senderRow.setPadding(new Insets(10, 13, 10, 10));
-        senderRow.setStyle("-fx-background-color:" + BG + "; -fx-background-radius:12;"
-                + " -fx-border-color:" + LINE + "; -fx-border-radius:12;");
+        senderRow.setStyle("-fx-background-color: linear-gradient(to right, " + SOFT + ", " + SURFACE + ");"
+                + " -fx-background-radius:12; -fx-border-color:#DBEAFE; -fx-border-radius:12;"
+                + " -fx-effect: dropshadow(gaussian, rgba(37,99,235,0.10), 10, 0.15, 0, 2);");
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
         VBox timeBox = new VBox(2, new Label("THỜI GIAN"), readerTime);
@@ -1249,7 +1252,7 @@ public class ClientApp extends Application {
         HBox chipRow = new HBox(8, readerDb, readerFromIp);
         chipRow.setAlignment(Pos.CENTER_LEFT);
 
-        Button replyBtn = toolButton(FontAwesomeSolid.REPLY, "Trả lời", ACCENT);
+        Button replyBtn = primaryButton("TRẢ LỜI", FontAwesomeSolid.REPLY);
         replyBtn.setOnAction(e -> {
             if (selectedMail != null) openCompose(selectedMail.from, "Re: " + selectedMail.subtitle(),
                     "\n\n--- Thư gốc ---\n" + selectedMail.preview);
@@ -1264,11 +1267,12 @@ public class ClientApp extends Application {
         toolbar.setAlignment(Pos.CENTER_LEFT);
 
         VBox headerCard = new VBox(12, readerSubject, metaRow, chipRow, readerHint, toolbar);
-        headerCard.setPadding(new Insets(20, 22, 16, 22));
-        headerCard.setStyle("-fx-background-color:" + SURFACE + "; -fx-background-radius:16;"
-                + " -fx-border-color:" + ACCENT + " transparent " + LINE + " transparent;"
-                + " -fx-border-width:3 0 1 0; -fx-border-radius:16;"
-                + " -fx-effect: dropshadow(gaussian, rgba(15,23,42,0.06), 18, 0.16, 0, 4);");
+        headerCard.setPadding(new Insets(24, 24, 18, 24));
+        headerCard.setStyle("-fx-background-color: linear-gradient(to right, " + ACCENT + ", " + TEAL + "), "
+                + SURFACE + "; -fx-background-insets: 0, 4 0 0 0; -fx-background-radius:18;"
+                + " -fx-border-color:transparent " + LINE + " " + LINE + " " + LINE + ";"
+                + " -fx-border-width:0 1 1 1; -fx-border-radius:18;"
+                + " -fx-effect: dropshadow(gaussian, rgba(15,23,42,0.08), 22, 0.18, 0, 6);");
 
         readerBody = new TextArea();
         readerBody.setEditable(false);
@@ -1293,9 +1297,17 @@ public class ClientApp extends Application {
         StackPane readerContent = new StackPane(readerBody, readerWeb);
         VBox.setVgrow(readerContent, Priority.ALWAYS);
 
-        VBox bodyCard = new VBox(0, readerContent, readerAttachments);
+        FontIcon bodyIc = new FontIcon(FontAwesomeSolid.ALIGN_LEFT);
+        bodyIc.setIconSize(10);
+        bodyIc.setIconColor(Color.web(ACCENT));
+        Label bodyTitle = new Label("  NỘI DUNG THƯ");
+        bodyTitle.setGraphic(bodyIc);
+        bodyTitle.setStyle("-fx-text-fill:" + MUTED + "; -fx-font-size:9px; -fx-font-weight:bold;"
+                + " -fx-padding:10 0 2 6;");
+
+        VBox bodyCard = new VBox(0, bodyTitle, readerContent, readerAttachments);
         bodyCard.setStyle(cardStyle(16));
-        bodyCard.setPadding(new Insets(4));
+        bodyCard.setPadding(new Insets(8, 4, 4, 4));
         VBox.setVgrow(bodyCard, Priority.ALWAYS);
         VBox.setVgrow(readerContent, Priority.ALWAYS);
 
