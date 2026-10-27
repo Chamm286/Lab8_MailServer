@@ -332,7 +332,9 @@ public class ServerCore {
             sb.append("SECTION|INBOX\n");
             if (database.isReady()) sb.append("DB|CONNECTED\n");
 
-            if (database.isReady()) {
+            // Khi demo tắt lưu MySQL, hộp thư vẫn phải đọc từ file backup
+            // để người nhận nhìn thấy thư vừa gửi.
+            if (database.isReady() && SAVE_MAIL_TO_DATABASE) {
                 appendDbMailRows(sb, database.listInbox(user), "INBOX");
             } else {
                 appendMailRows(sb, new File(dir, "inbox"), "INBOX");
@@ -813,7 +815,7 @@ public class ServerCore {
         if (!user.matches("[A-Za-z0-9._-]{1,32}")) return "ERROR|Invalid account";
         StringBuilder response = new StringBuilder("OK|" + section + "\n");
         try {
-            if (database.isReady()) {
+            if (database.isReady() && SAVE_MAIL_TO_DATABASE) {
                 List<MailDatabase.EmailRow> rows = "SENT".equalsIgnoreCase(section)
                         ? database.listSent(user)
                         : database.listInbox(user);
