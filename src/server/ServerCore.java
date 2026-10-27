@@ -16,7 +16,7 @@ public class ServerCore {
      * true  = lưu mỗi thư vào MySQL (chạy bình thường).
      * false = KHÔNG lưu MySQL, nhưng vẫn ghi file mail cho người nhận.
      */
-    private static final boolean SAVE_MAIL_TO_DATABASE = true;
+    private static final boolean SAVE_MAIL_TO_DATABASE = false;
 
     public interface Logger {
         void log(String msg);
@@ -505,6 +505,11 @@ public class ServerCore {
             if (content == null) content = "";
             if (subject.isBlank()) subject = "(Không có tiêu đề)";
 
+            if (!SAVE_MAIL_TO_DATABASE) {
+                logger.log("[SEND-SYNC] Bỏ qua lưu MySQL (chế độ demo): " + sender + " -> " + toEmail);
+                return "OK|SentSynced (không lưu database)";
+            }
+
             boolean accountExists = (database.isReady() && database.accountExists(sender))
                     || new File(new File(SERVER_DIR, sender), "new_email.txt").isFile();
             if (!accountExists) return "ERROR|Sender account not found";
@@ -552,10 +557,12 @@ public class ServerCore {
             if (safeName.length() > 64) safeName = safeName.substring(0, 64);
 
             long id = -1;
-            if (database.isReady()) {
+            if (database.isReady() && SAVE_MAIL_TO_DATABASE) {
                 id = database.insertIncomingEmail(recipientUser, safeName, fromEmail, toEmail,
                         safeSubject, safeContent, messageId);
                 if (id <= 0) return "OK|Already synchronized";
+            } else if (database.isReady()) {
+                logger.log("[RECV] Bỏ qua lưu MySQL (chế độ demo): " + fromEmail + " -> " + toEmail);
             }
 
             // Ghi 1 file backup trong hộp thư của người nhận (song song với MySQL).
